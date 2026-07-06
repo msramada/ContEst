@@ -23,10 +23,14 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
   `example_adcs.jl` (spacecraft: shared power/mass budget split across
   sensors+wheels via `V(θ)`), `example_distillation.jl` (feed-stage/sensor-tray
   placement), and `example_pll.jl` (PLL/DSE estimator co-design, bias–variance
-  `V(θ)`) — plus one **large-scale linear LQG** study, `example_mtdc.jl`
-  (multi-terminal HVDC droop coordination, control-only `θ_f`, U-shaped `J_c`),
-  which uses the steady-state LQG lower level (control Riccati + Lyapunov) rather
-  than eKF–MPC.
+  `V(θ)`) — plus one **large-scale linear, robust H∞** study, `example_mtdc.jl`
+  (multi-terminal HVDC droop coordination, control-only `θ_f`, U-shaped worst-case
+  cost `V(θ)=tr(XW)`), which uses the steady-state **H∞ game Riccati** lower level
+  (an indefinite-weight DARE `R̃=diag(R,−γ²I)`, `B̃=[B E]`, `E=√W`, fixed
+  attenuation `γ²=8`; `src/Hinf.jl`) rather than eKF–MPC. The game Riccati reuses
+  `dare`/`dlyap` from `src/LQR.jl` and the same envelope gradient (`∂V/∂A=2XA_cl S`);
+  as `γ→∞` it collapses to the H₂ `tr(PW)`. (The earlier H₂/LQG version was
+  replaced.)
   Every study is posed so its optimum is a genuine **interior / non-monotone**
   trade (budgeted allocation, saturating benefit, or U-shape), not a parameter
   pinned at a bound. (`example_cstr.jl` was removed as trivial; the earlier LQG
