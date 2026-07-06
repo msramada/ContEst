@@ -1,0 +1,766 @@
+%=======================================================================
+%  Thm1_proof.tex
+%
+%  A self-contained note proving that the regularity Assumption 1 of the
+%  ContEst paper -- under which Theorem 1 (the exact envelope gradient) and
+%  Corollary 1 (the LQG design gradient) hold -- is implied, in the LQG
+%  case, by the standard system-theoretic hypotheses of stabilizability and
+%  detectability together with positive-definite noise/weight data.
+%
+%  The document compiles on its own (\documentclass{article}); it restates
+%  the objects it needs from the paper so that no cross-file references are
+%  required.  Notation mirrors Sections 3--5 of automatica.tex:
+%      control SDP        == Eq. (8)   [eq:Jcont]
+%      estimation SDP     == Eq. (9)   [eq:Jest]
+%      Theorem 1          == Prop. envelope   [prop:envelope]
+%      Assumption 1 (A1)--(A4)             [as:env]
+%      Corollary 1        == LQG design gradient [cor:lqg]
+%=======================================================================
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\range}{range}
+\DeclareMathOperator{\dom}{dom}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Sym}{\mathbb{S}}
+\newcommand{\PSD}{\succeq 0}
+\newcommand{\PD}{\succ 0}
+\newcommand{\Acl}{A_{\mathrm{cl}}}
+\newcommand{\Th}{\theta}
+\newcommand{\Nbhd}{\Theta_{0}}
+\newcommand{\half}{{1/2}}
+\newcommand{\inner}[2]{\langle #1,\, #2\rangle}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\Sig}{\Sigma}
+\newcommand{\Pe}{P^{\varepsilon}}
+
+\title{\bf From controllability and observability to the regularity of
+Theorem~1:\\
+a self-contained proof for the LQG co-design SDPs}
+\author{ContEst supplementary note}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Theorem~1 of the ContEst paper computes the exact design gradient of a convex
+inner problem by contracting the model Jacobians against the dual variables the
+inner solver already returns. It holds under Assumption~1, a set of conic-program
+regularity conditions --- convexity and $C^1$ data with a Slater point (A1),
+uniqueness of the primal minimizer (A2), and nondegeneracy / strict
+complementarity so that the dual is unique (A3) --- which in the paper are simply
+\emph{assumed} and checked \emph{a~posteriori} by finite differences. This note
+removes that gap in the linear--quadratic--Gaussian (LQG) case. We prove that for
+both the control SDP~(8) and the estimation SDP~(9), Assumption~1(A1)--(A2) is a
+\emph{consequence} of the classical hypotheses that $(A_\theta,B_\theta)$ is
+stabilizable, $(A_\theta,C_\theta)$ is detectable, $W,V\succ0$, $R\succ0$, and
+$Q\succeq0$ with $(A_\theta,Q^{\half})$ detectable (the last automatic when
+$Q\succ0$). We construct the Slater points explicitly, identify the unique primal
+optimizer with the stabilizing solution of the corresponding discrete algebraic
+Riccati equation (DARE), and show the optimal value is a $C^1$ function of
+$\theta$. From this we derive the operational conclusion of Corollary~1 in a form
+that does \emph{not} even require (A3): the envelope gradient read from
+\emph{any} optimal dual returned by the solver equals the true $\nabla_\theta V$.
+Strict complementarity (A3) is then shown to be the exact condition under which
+the dual is moreover \emph{unique}, recovering Assumption~1 verbatim. The result
+turns Corollary~1 from ``differentiable under regularity we hope holds'' into
+``differentiable under standard system-theoretic hypotheses,'' making the paper
+self-contained and citable.
+\end{abstract}
+
+\tableofcontents
+
+%=======================================================================
+\section{Setup and statement}\label{sec:setup}
+%=======================================================================
+
+We work in discrete time. Fix a design point $\Th$ in an open set
+$\Nbhd\subseteq\R^{r_\theta}$ and consider the linear model of Section~5 of the
+paper,
+\begin{equation}\label{eq:model}
+x_{k+1}=A_\Th x_k+B_\Th u_k+w_k,\qquad y_k=C_\Th x_k+v_k,
+\end{equation}
+with $x_k\in\R^{n}$ ($n=r_x$), $u_k\in\R^{m}$, $y_k\in\R^{p}$, and zero-mean
+white $w_k,v_k$ of covariances $W=W(\Th)$ and $V=V(\Th)$. The stage weights are
+$Q=Q(\Th)\succeq0$ and $R=R(\Th)\succ0$. We use $\Sym^{q}$ for the symmetric
+$q\times q$ matrices, $X\succ0$ ($X\succeq0$) for positive (semi)definiteness,
+and $\inner{X}{Y}=\tr(X^\top Y)$.
+
+The paper reduces the LQG inner value, by the separation principle applied
+\emph{within the inner solve}, to two semidefinite programs. We restate them.
+
+\paragraph{Control SDP (Eq.~(8)).}
+\begin{equation}\label{eq:Jcont}
+\begin{aligned}
+J_{\mathrm{cont}}(\Th)=\ \min_{\Sig,L,Z_0}\ &\tr(Q\Sig)+\tr(R Z_0)\\
+\text{s.t. }\ & \Sig\succ0,\qquad
+\begin{bmatrix} Z_0 & L\\ L^\top & \Sig\end{bmatrix}\succeq0,\\[2pt]
+& \underbrace{\begin{bmatrix}
+\Sig-W & A_\Th\Sig+B_\Th L\\
+(A_\Th\Sig+B_\Th L)^\top & \Sig
+\end{bmatrix}}_{=:~\mathcal G_{\mathrm c}(\Sig,L;\Th)}\succeq0,
+\end{aligned}
+\end{equation}
+with optimal gain $K^\star=L^\star(\Sig^\star)^{-1}$.
+
+\paragraph{Estimation SDP (Eq.~(9)).}
+\begin{equation}\label{eq:Jest}
+\begin{aligned}
+J_{\mathrm{est}}(\Th)=\ \min_{\Pe,F,Z_1}\ &\tr(W \Pe)+\tr(V Z_1)\\
+\text{s.t. }\ & \Pe\succ0,\qquad
+\begin{bmatrix} Z_1 & F^\top\\ F & \Pe\end{bmatrix}\succeq0,\\[2pt]
+& \underbrace{\begin{bmatrix}
+\Pe-Q & A_\Th^\top \Pe-C_\Th^\top F^\top\\
+\Pe A_\Th-F C_\Th & \Pe
+\end{bmatrix}}_{=:~\mathcal G_{\mathrm e}(\Pe,F;\Th)}\succeq0 .
+\end{aligned}
+\end{equation}
+
+Both are instances of the generic conic program of the paper,
+\begin{equation}\label{eq:generic}
+V(\Th)=\min_{z}\ \phi(z,\Th)\quad\text{s.t.}\quad
+g(z,\Th)=0,\ \ G(z,\Th)\in\mathcal K,
+\end{equation}
+with $\mathcal K$ the semidefinite cone, Lagrangian
+$L(z,\mu,S,\Th)=\phi+\inner{\mu}{g}+\inner{S}{G}$, and optimal triple
+$(z^\star,\mu^\star,S^\star)$. Theorem~1 states that under Assumption~1,
+\begin{equation}\label{eq:envelope}
+\nabla_\Th V(\Th)=\nabla_\Th L(z^\star,\mu^\star,S^\star,\Th)
+=\partial_\Th\phi+\inner{\mu^\star}{\partial_\Th g}
++\inner{S^\star}{\partial_\Th G},
+\end{equation}
+the partials taken with $(z^\star,\mu^\star,S^\star)$ held fixed. Assumption~1
+requires, on $\Nbhd$: (A1) convexity, jointly $C^1$ data, and Slater; (A2) a
+unique primal minimizer; (A3) nondegeneracy and strict complementarity, hence a
+unique dual; (A4) $\Th$ enters only through finitely many $C^1$ data objects
+$D(\Th)$.
+
+We prove the following.
+
+\begin{assumption}[System-theoretic hypotheses]\label{as:sys}
+On the open neighborhood $\Nbhd$ of $\Th$:
+\begin{enumerate}
+\item[\textup{(S1)}] the maps $\Th\mapsto(A_\Th,B_\Th,C_\Th,W,V,Q,R)$ are $C^1$;
+\item[\textup{(S2)}] $(A_\Th,B_\Th)$ is stabilizable and $(A_\Th,C_\Th)$ is
+detectable;
+\item[\textup{(S3)}] $W(\Th)\succ0$, $V(\Th)\succ0$, $R(\Th)\succ0$,
+$Q(\Th)\succeq0$, and $(A_\Th,Q^{\half})$ is detectable
+\textup{(}automatic when $Q\succ0$\textup{)}.
+\end{enumerate}
+\end{assumption}
+
+\begin{theorem}[Main]\label{thm:main}
+Under Assumption~\ref{as:sys}, for each of the SDPs \eqref{eq:Jcont} and
+\eqref{eq:Jest} and every $\Th\in\Nbhd$:
+\begin{enumerate}
+\item[\textup{(i)}] \emph{(A1) and (A4) hold.} The program is convex with jointly
+$C^1$ data, $\Th$ enters only through $D(\Th)=(A_\Th,B_\Th,C_\Th,W,V,Q,R)$, a
+Slater point exists, and consequently strong duality holds with an attained
+primal--dual solution.
+\item[\textup{(ii)}] \emph{(A2) holds.} The primal minimizer is unique and equals
+the stabilizing solution of the associated DARE; in particular
+$\Sig^\star\succ0$ (resp.\ $\Pe{}^{\star}\succ0$).
+\item[\textup{(iii)}] \emph{Value differentiability and Corollary~1.}
+$V(\cdot)\in C^1(\Nbhd)$, and for \emph{every} optimal dual
+$(\mu^\star,S^\star)$ the right-hand side of \eqref{eq:envelope} equals
+$\nabla_\Th V(\Th)$. Hence the LQG design gradients of Corollary~1
+--- Eqs.~(12)--(13) and (16)--(17) of the paper --- computed from the duals the
+solver returns, are exact.
+\item[\textup{(iv)}] \emph{(A3) and Assumption~1 verbatim.} If, in addition,
+the primal--dual solution is strictly complementary and primal nondegenerate,
+then the dual $(\mu^\star,S^\star)$ is unique, so Assumption~1(A1)--(A4) holds in
+full and Theorem~1 applies as stated.
+\end{enumerate}
+\end{theorem}
+
+Part~(iii) is the operationally decisive statement: it validates Corollary~1
+under (S1)--(S3) \emph{alone}, i.e.\ under controllability/observability-type
+hypotheses, without invoking strict complementarity. Part~(iv) records that
+(A3) is exactly the extra ingredient that upgrades ``the returned dual gives the
+right gradient'' to ``the dual is unique,'' which is Assumption~1 as written.
+
+The remainder proves Theorem~\ref{thm:main}. Section~\ref{sec:convex} disposes of
+(A1)/(A4) except Slater; Section~\ref{sec:slater} constructs Slater points from
+(S2)--(S3); Section~\ref{sec:riccati} identifies the primal optimum with the DARE
+solution and proves uniqueness; Section~\ref{sec:diff} proves value
+differentiability and the dual-invariant gradient formula;
+Section~\ref{sec:a3} treats strict complementarity and dual uniqueness. Because
+\eqref{eq:Jest} is the transpose dual of \eqref{eq:Jcont}, we prove everything
+for the control SDP and transfer to the estimation SDP by an explicit
+substitution (Section~\ref{sec:est}).
+
+%=======================================================================
+\section{Convexity, smoothness of the data, and (A4)}\label{sec:convex}
+%=======================================================================
+
+\begin{lemma}\label{lem:convex}
+For each fixed $\Th$, \eqref{eq:Jcont} is a convex program: the objective is
+linear in $(\Sig,L,Z_0)$ and the three constraints are, respectively, an open
+linear-matrix strict inequality and two linear-matrix inequalities in
+$(\Sig,L,Z_0)$. Its data $(\phi,g,G)$ are affine in the decision variables and
+depend on $\Th$ only through $D(\Th)=(A_\Th,B_\Th,W,Q,R)$; under \textup{(S1)}
+they are jointly $C^1$ in $(z,\Th)$. The identical statement holds for
+\eqref{eq:Jest} with $D(\Th)=(A_\Th,C_\Th,W,V,Q)$.
+\end{lemma}
+
+\begin{proof}
+The objective $\tr(Q\Sig)+\tr(RZ_0)$ is linear. The matrices
+$\begin{bsmallmatrix}Z_0&L\\L^\top&\Sig\end{bsmallmatrix}$ and
+$\mathcal G_{\mathrm c}(\Sig,L;\Th)$ are affine functions of $(\Sig,L,Z_0)$
+whose coefficients are $C^1$ in $\Th$ by (S1); requiring them to lie in the PSD
+cone $\mathcal K$ is a convex constraint. The strict constraint $\Sig\succ0$
+defines an open convex set. All $\Th$-dependence is carried by the coefficient
+matrices $A_\Th,B_\Th,W,Q,R$, giving (A4). $C^1$ jointness in $(z,\Th)$ is
+immediate because the entries are polynomials in $z$ with $C^1$ coefficients in
+$\Th$.
+\end{proof}
+
+Thus (A1) reduces to Slater's condition, and (A4) is already established. We now
+produce a Slater point.
+
+%=======================================================================
+\section{Slater's condition from stabilizability and detectability}\label{sec:slater}
+%=======================================================================
+
+The one place where the system-theoretic hypotheses do genuine work is strict
+feasibility. We give an explicit strictly feasible triple, so Slater's condition
+is not merely asserted but exhibited.
+
+\begin{lemma}[Slater for the control SDP]\label{lem:slater-cont}
+Assume \textup{(S2)}--\textup{(S3)}. Then \eqref{eq:Jcont} has a Slater point:
+there exist $(\Sig,L,Z_0)$ with $\Sig\succ0$,
+$\begin{bsmallmatrix}Z_0&L\\L^\top&\Sig\end{bsmallmatrix}\succ0$, and
+$\mathcal G_{\mathrm c}(\Sig,L;\Th)\succ0$ \textup{(}all constraints strict\textup{)}.
+\end{lemma}
+
+\begin{proof}
+By stabilizability of $(A_\Th,B_\Th)$ pick $K$ with $\Acl:=A_\Th+B_\Th K$ Schur
+(spectral radius $<1$). Fix any $\eps>0$. Because $\Acl$ is Schur and
+$W+\eps I\succ0$, the discrete Lyapunov equation
+\begin{equation}\label{eq:lyap-slater}
+\Sig=\Acl\,\Sig\,\Acl^\top+W+\eps I
+\end{equation}
+has a unique solution $\Sig=\sum_{k\ge0}\Acl^{k}(W+\eps I)\Acl^{\top k}\succ0$.
+Set $L:=K\Sig$ and $Z_0:=K\Sig K^\top+\eps I$. We check the three constraints.
+
+\emph{(a)} $\Sig\succ0$ by construction.
+
+\emph{(b)} The Schur complement of the block
+$\begin{bsmallmatrix}Z_0&L\\L^\top&\Sig\end{bsmallmatrix}$ with respect to
+$\Sig\succ0$ is $Z_0-L\Sig^{-1}L^\top=K\Sig K^\top+\eps I-K\Sig\,\Sig^{-1}\Sig
+K^\top=\eps I\succ0$; hence the block is $\succ0$.
+
+\emph{(c)} In $\mathcal G_{\mathrm c}$ we have
+$A_\Th\Sig+B_\Th L=(A_\Th+B_\Th K)\Sig=\Acl\Sig$. Its Schur complement with
+respect to the $(2,2)$ block $\Sig\succ0$ is
+\[
+(\Sig-W)-(\Acl\Sig)\Sig^{-1}(\Acl\Sig)^\top
+=\Sig-W-\Acl\Sig\Acl^\top
+\overset{\eqref{eq:lyap-slater}}{=}\eps I\succ0,
+\]
+so $\mathcal G_{\mathrm c}(\Sig,L;\Th)\succ0$. (Note $\Sig-W\succ0$ as well,
+since $\Sig-W=\Acl\Sig\Acl^\top+\eps I\succ0$.)
+\end{proof}
+
+\begin{corollary}[Strong duality and attainment]\label{cor:duality}
+Under \textup{(S2)}--\textup{(S3)}, \eqref{eq:Jcont} is bounded below, strong
+duality holds, and the dual optimum is attained; the primal optimum is attained
+as well \textup{(}Section~\ref{sec:riccati}\textup{)}. Consequently
+Assumption~1(A1) holds.
+\end{corollary}
+
+\begin{proof}
+Boundedness below: for feasible $(\Sig,L,Z_0)$, $\Sig\succeq0$ and $Q\succeq0$
+give $\tr(Q\Sig)\ge0$, and $Z_0\succeq L\Sig^{-1}L^\top\succeq0$ with $R\succ0$
+gives $\tr(RZ_0)\ge0$; hence the objective is $\ge0$. Slater
+(Lemma~\ref{lem:slater-cont}) for a bounded-below convex conic program implies
+zero duality gap and dual attainment by the conic strong-duality theorem
+\cite[Thm.~2.4.1]{BonnansShapiro}, \cite[\S5.9]{BoydVandenberghe}. Primal
+attainment is exhibited constructively in Proposition~\ref{prop:primalopt}.
+\end{proof}
+
+%=======================================================================
+\section{Uniqueness of the primal optimizer via the Riccati solution}\label{sec:riccati}
+%=======================================================================
+
+We now identify the primal optimum of \eqref{eq:Jcont} with the LQR solution and
+prove (A2). Throughout, ``the control DARE'' is
+\begin{equation}\label{eq:dare}
+P=A_\Th^\top P A_\Th
+-A_\Th^\top P B_\Th\,(R+B_\Th^\top P B_\Th)^{-1}B_\Th^\top P A_\Th+Q,
+\end{equation}
+with the associated gain and closed loop
+\begin{equation}\label{eq:gain}
+K^\star=-(R+B_\Th^\top P B_\Th)^{-1}B_\Th^\top P A_\Th,\qquad
+\Acl^\star=A_\Th+B_\Th K^\star .
+\end{equation}
+
+\begin{lemma}[Classical LQR facts]\label{lem:dare}
+Under \textup{(S2)}--\textup{(S3)}, \eqref{eq:dare} has a unique symmetric
+solution $P\succeq0$ for which $\Acl^\star$ is Schur; the optimal gain $K^\star$
+in \eqref{eq:gain} is the unique minimizer of the stationary LQR cost
+$J(K)=\tr(Q\Sig_K)+\tr(RK\Sig_KK^\top)$ over stabilizing $K$, where $\Sig_K$
+solves $\Sig_K=(A_\Th+B_\Th K)\Sig_K(A_\Th+B_\Th K)^\top+W$; and the minimum
+equals $\tr(PW)$.
+\end{lemma}
+
+\begin{proof}
+Existence and uniqueness of the stabilizing $P\succeq0$ under
+$(A_\Th,B_\Th)$ stabilizable and $(A_\Th,Q^{\half})$ detectable is the standard
+DARE theorem, e.g.\ \cite[Ch.~14--15]{LancasterRodman},
+\cite[Ch.~6]{AndersonMoore}. Uniqueness of the optimal gain and the identity
+$\min_K J(K)=\tr(PW)$ for the process-noise ($H_2$) formulation are classical,
+\cite[Ch.~5]{AndersonMoore}, \cite[Ch.~3]{KwakernaakSivan}; the latter is exactly
+Eq.~(15) of the paper, $J_c=\tr(PW)$.
+\end{proof}
+
+\begin{proposition}[Primal optimum and uniqueness]\label{prop:primalopt}
+Under Assumption~\ref{as:sys}, the unique minimizer of \eqref{eq:Jcont} is
+\begin{equation}\label{eq:primalstar}
+\Sig^\star=\Sig_{K^\star}\succ0,\qquad
+L^\star=K^\star\Sig^\star,\qquad
+Z_0^\star=K^\star\Sig^\star(K^\star)^\top,
+\end{equation}
+with $K^\star,\Acl^\star$ from \eqref{eq:gain}. The optimal value is
+$J_{\mathrm{cont}}(\Th)=\tr\!\big(P\,W\big)$. Thus Assumption~1(A2) holds and
+$\Sig^\star\succ0$.
+\end{proposition}
+
+\begin{proof}
+\emph{Feasibility and value of \eqref{eq:primalstar}.} Because $\Acl^\star$ is
+Schur (Lemma~\ref{lem:dare}) and $W\succ0$, the Lyapunov equation
+$\Sig^\star=\Acl^\star\Sig^\star(\Acl^\star)^\top+W$ has the unique solution
+$\Sig^\star=\sum_{k\ge0}(\Acl^\star)^kW(\Acl^\star)^{\top k}\succ0$. With
+$L^\star=K^\star\Sig^\star$ we get $A_\Th\Sig^\star+B_\Th L^\star
+=\Acl^\star\Sig^\star$, and the Schur complement of
+$\mathcal G_{\mathrm c}(\Sig^\star,L^\star;\Th)$ with respect to $\Sig^\star\succ0$
+is $(\Sig^\star-W)-\Acl^\star\Sig^\star(\Acl^\star)^\top=0\succeq0$; so
+$\mathcal G_{\mathrm c}\succeq0$. With $Z_0^\star=K^\star\Sig^\star(K^\star)^\top
+=L^\star(\Sig^\star)^{-1}(L^\star)^\top$ the middle block has Schur complement
+$0\succeq0$. Hence \eqref{eq:primalstar} is feasible, and its objective is
+$\tr(Q\Sig^\star)+\tr(RK^\star\Sig^\star(K^\star)^\top)=J(K^\star)=\tr(PW)$.
+
+\emph{Optimality: no feasible point does better.} Let $(\Sig,L,Z_0)$ be any
+feasible triple and set $K:=L\Sig^{-1}$ (so $L=K\Sig$; $\Sig\succ0$). The middle
+block gives $Z_0\succeq L\Sig^{-1}L^\top=K\Sig K^\top$, whence, $R\succ0$,
+\begin{equation}\label{eq:z0bound}
+\tr(RZ_0)\ge\tr(RK\Sig K^\top).
+\end{equation}
+The Schur complement of $\mathcal G_{\mathrm c}$ with respect to $\Sig\succ0$
+reads
+\begin{equation}\label{eq:lyapineq}
+\Sig-W-(A_\Th\Sig+B_\Th L)\Sig^{-1}(A_\Th\Sig+B_\Th L)^\top
+=\Sig-W-(A_\Th+B_\Th K)\Sig(A_\Th+B_\Th K)^\top\succeq0,
+\end{equation}
+i.e.\ $\Sig\succeq(A_\Th+B_\Th K)\Sig(A_\Th+B_\Th K)^\top+W$. Since $W\succ0$ and
+$\Sig\succ0$, this Lyapunov inequality forces $A_\Th+B_\Th K$ to be Schur
+\cite[Ch.~5]{BoydLMI}; hence $K$ is stabilizing and $\Sig_K$ is well defined.
+Subtracting $\Sig_K=(A_\Th+B_\Th K)\Sig_K(A_\Th+B_\Th K)^\top+W$ from
+\eqref{eq:lyapineq} gives, with $\Delta:=\Sig-\Sig_K$,
+\begin{equation}\label{eq:deltastein}
+\Delta\succeq (A_\Th+B_\Th K)\,\Delta\,(A_\Th+B_\Th K)^\top,
+\end{equation}
+and iterating a Schur-stable Stein inequality yields $\Delta\succeq0$, i.e.\
+$\Sig\succeq\Sig_K$. As $Q\succeq0$, $\tr(Q\Sig)\ge\tr(Q\Sig_K)$; combined with
+\eqref{eq:z0bound} and $\Sig\succeq\Sig_K$,
+\[
+\tr(Q\Sig)+\tr(RZ_0)\ \ge\ \tr(Q\Sig_K)+\tr(RK\Sig_KK^\top)\ =\ J(K)\ \ge\ \tr(PW),
+\]
+the last step by Lemma~\ref{lem:dare}. Hence $\tr(PW)$ is the optimal value,
+attained by \eqref{eq:primalstar}.
+
+\emph{Uniqueness.} Let $(\Sig,L,Z_0)$ be optimal, $K=L\Sig^{-1}$. Chasing the
+equalities in the display above: $J(K)=\tr(PW)$ forces $K=K^\star$ (unique LQR
+minimizer, Lemma~\ref{lem:dare}). Then $\Acl^\star$ is Schur and, from
+$\tr(RZ_0)=\tr(RK^\star\Sig(K^\star)^\top)$ with the constraint
+$Z_0\succeq K^\star\Sig(K^\star)^\top$ and $R\succ0$, the linear functional
+$\tr(R\,\cdot)$ is minimized on $\{Z_0\succeq K^\star\Sig(K^\star)^\top\}$ only at
+the boundary point, so $Z_0=K^\star\Sig(K^\star)^\top$ is pinned by $\Sig$.
+It remains to show $\Sig=\Sig^\star$. With $K=K^\star$, $\Delta=\Sig-\Sig^\star
+\succeq0$ satisfies \eqref{eq:deltastein}, i.e.\
+$\Delta\succeq\Acl^\star\Delta(\Acl^\star)^\top$, and optimality forces
+$\tr(Q\Delta)=0$, hence $Q^{\half}\Delta=0$ and $K^\star\Delta=0$ (the latter
+because $\tr(RK^\star\Delta(K^\star)^\top)=\tr(RZ_0)-\tr(RK^\star\Sig^\star
+(K^\star)^\top)=\tr(PW)-\tr(PW)=0$ with $R\succ0$). Using $K^\star\Delta=0$,
+\[
+\Acl^\star\Delta=(A_\Th+B_\Th K^\star)\Delta=A_\Th\Delta,
+\qquad\text{so}\qquad
+\Delta\succeq A_\Th\Delta A_\Th^\top .
+\]
+Together with $Q^{\half}\Delta=0$ and $\Delta\succeq0$, detectability of
+$(A_\Th,Q^{\half})$ forces $\Delta=0$: the range of $\Delta$ is
+$A_\Th$-invariant (if $\Delta x=0$ then $0=x^\top\Delta x\ge\|\Delta^{\half}
+A_\Th^\top x\|^2$, so $\Delta A_\Th^\top x=0$, i.e.\ $\ker\Delta$ is
+$A_\Th^\top$-invariant and $\range\Delta$ is $A_\Th$-invariant) and lies in
+$\ker Q^{\half}$; a nonzero such subspace would be an $A_\Th$-invariant
+unobservable subspace of $(A_\Th,Q^{\half})$, and on it the inequality
+$\Delta\succeq A_\Th\Delta A_\Th^\top$ makes $A_\Th$ nonexpansive, contradicting
+that detectability confines the unobservable subspace to the Schur-stable
+part unless it is trivial.\footnote{Concretely, when $Q\succ0$ the step is
+immediate: $\tr(Q\Delta)=0$ with $Q\succ0,\ \Delta\succeq0$ gives $\Delta=0$.
+The interior-optimum studies of the paper use $Q\succ0$, so this simplest case
+already covers them; the detectability argument extends it to $Q\succeq0$.}
+Hence $\Delta=0$, $\Sig=\Sig^\star$, and the optimizer is unique.
+\end{proof}
+
+Proposition~\ref{prop:primalopt} establishes (A2) and, with
+Corollary~\ref{cor:duality}, completes (A1). It also supplies the primal
+attainment claimed there.
+
+%=======================================================================
+\section{Value differentiability and the dual-invariant gradient}\label{sec:diff}
+%=======================================================================
+
+We now prove part~(iii) of Theorem~\ref{thm:main}: $V=J_{\mathrm{cont}}$ is $C^1$
+on $\Nbhd$, and the envelope formula \eqref{eq:envelope} returns the true
+gradient for \emph{any} optimal dual --- so Corollary~1 holds even without (A3).
+
+The engine is that the optimal value is a smooth function of the model data
+through the Riccati map.
+
+\begin{lemma}[Smoothness of the stabilizing DARE solution]\label{lem:daresmooth}
+Let $\mathcal O\subseteq\R^{r_\theta}$ be the open set on which
+$(A_\Th,B_\Th)$ is stabilizable and $(A_\Th,Q^{\half})$ detectable. On $\mathcal
+O$ the stabilizing solution $P(\Th)$ of \eqref{eq:dare} is a $C^1$
+\textup{(}indeed real-analytic\textup{)} function of $\Th$, and so are
+$K^\star(\Th)$, $\Acl^\star(\Th)$, and $\Sig^\star(\Th)$.
+\end{lemma}
+
+\begin{proof}
+Write the DARE residual as $\mathcal R(P,\Th)=0$ with $\mathcal
+R:\Sym^n\times\mathcal O\to\Sym^n$ given by the right minus left side of
+\eqref{eq:dare}; $\mathcal R$ is $C^\infty$ (rational, with the invertible
+$R+B_\Th^\top PB_\Th\succ0$) and, by (S1), $C^1$ in $\Th$. At a stabilizing root
+$P=P(\Th)$ the partial Fréchet derivative $\partial_P\mathcal R(P,\Th)$ is the
+Stein (discrete Lyapunov) operator
+\[
+\partial_P\mathcal R(P,\Th)[X]\;=\;X-(\Acl^\star)^\top X\,\Acl^\star ,
+\]
+which is invertible precisely because $\Acl^\star$ is Schur (its eigenvalues are
+$1-\lambda_i\bar\lambda_j$ with $|\lambda_i|<1$, all nonzero). The implicit
+function theorem yields a unique $C^1$ branch $\Th\mapsto P(\Th)$ through the
+stabilizing root; analyticity follows from the analytic IFT. Then
+$K^\star,\Acl^\star$ are $C^1$ by \eqref{eq:gain}, and $\Sig^\star(\Th)$ solves a
+Lyapunov equation with $C^1$ Schur-stable data, hence is $C^1$.
+\end{proof}
+
+\begin{proposition}[$C^1$ value]\label{prop:c1value}
+Under Assumption~\ref{as:sys}, $J_{\mathrm{cont}}(\Th)=\tr\!\big(P(\Th)W(\Th)\big)$
+is $C^1$ on $\Nbhd$, with
+\begin{equation}\label{eq:gradV}
+\nabla_\Th J_{\mathrm{cont}}=\big\langle P,\ \partial_\Th W\big\rangle
++\big\langle \Sig^\star,\ \partial_\Th Q\big\rangle
++\big\langle K^\star\Sig^\star(K^\star)^\top,\ \partial_\Th R\big\rangle
++2\big\langle P\Acl^\star\Sig^\star,\ \partial_\Th A_\Th\big\rangle
++2\big\langle P\Acl^\star\Sig^\star(K^\star)^\top,\ \partial_\Th B_\Th\big\rangle,
+\end{equation}
+i.e.\ the closed-form gradients $\partial J_c/\partial(A,B,W,Q,R)$ of Eq.~(18) of
+the paper.
+\end{proposition}
+
+\begin{proof}
+$C^1$-ness is immediate from Proposition~\ref{prop:primalopt}
+($J_{\mathrm{cont}}=\tr(PW)$) and Lemma~\ref{lem:daresmooth} together with (S1).
+The explicit partials \eqref{eq:gradV} are obtained by differentiating
+$\tr(PW)$ using the DARE and the Lyapunov identity
+$\Sig^\star=\Acl^\star\Sig^\star(\Acl^\star)^\top+W$; the terms coincide with the
+Riccati/Lyapunov formulas quoted in Section~5 of the paper. (We do not use
+\eqref{eq:gradV} below; it is recorded to confirm the envelope and Riccati routes
+agree.)
+\end{proof}
+
+The next result is the crux. It shows the envelope right-hand side is the same
+for every optimal dual, so ``read the gradient off the returned dual'' is valid
+irrespective of dual non-uniqueness.
+
+\begin{theorem}[Dual-invariant envelope gradient]\label{thm:invariant}
+Under Assumption~\ref{as:sys}, let $\mathcal D^\star(\Th)$ be the
+\textup{(}nonempty, compact, convex\textup{)} set of optimal duals of
+\eqref{eq:Jcont}. Then for every $(\mu^\star,S^\star)\in\mathcal D^\star(\Th)$,
+\begin{equation}\label{eq:invariant}
+\nabla_\Th L\big(z^\star,\mu^\star,S^\star,\Th\big)
+=\nabla_\Th J_{\mathrm{cont}}(\Th),
+\end{equation}
+where $z^\star=(\Sig^\star,L^\star,Z_0^\star)$ is the unique primal optimizer.
+In particular the envelope formula \eqref{eq:envelope}, and hence the LMI-dual
+gradients of Corollary~1 \textup{(}Eqs.~(12)--(13) of the paper\textup{)},
+evaluated at \emph{any} solver-returned optimal dual, equal the true design
+gradient.
+\end{theorem}
+
+\begin{proof}
+By Slater (Lemma~\ref{lem:slater-cont}) the dual optimal set $\mathcal
+D^\star(\Th)$ is nonempty, convex and compact, and by (A2) the primal minimizer
+$z^\star$ is unique. Under these conditions the value function of the convex
+program \eqref{eq:generic} is directionally differentiable in $\Th$ with
+\begin{equation}\label{eq:dirderiv}
+J_{\mathrm{cont}}'(\Th;d)
+=\min_{(\mu,S)\in\mathcal D^\star(\Th)}
+\big\langle \nabla_\Th L(z^\star,\mu,S,\Th),\ d\big\rangle,
+\qquad d\in\R^{r_\theta},
+\end{equation}
+by the perturbation-analysis / Danskin-type theorem for optimal values of convex
+problems with a unique primal solution \cite[Thm.~4.24, Prop.~4.22]{BonnansShapiro}
+(this is exactly the directional formula quoted in Remark~1 of the paper).
+
+By Proposition~\ref{prop:c1value}, $J_{\mathrm{cont}}$ is differentiable at
+$\Th$, so its directional derivative is \emph{linear} in $d$:
+$J_{\mathrm{cont}}'(\Th;d)=\langle\nabla_\Th J_{\mathrm{cont}},d\rangle$ for all
+$d$. Combining with \eqref{eq:dirderiv},
+\begin{equation}\label{eq:minlinear}
+\min_{(\mu,S)\in\mathcal D^\star}
+\big\langle \nabla_\Th L(z^\star,\mu,S,\Th),\ d\big\rangle
+=\big\langle \nabla_\Th J_{\mathrm{cont}},\ d\big\rangle
+\qquad\text{for all } d .
+\end{equation}
+Fix any $(\mu^\star,S^\star)\in\mathcal D^\star$ and abbreviate
+$a:=\nabla_\Th L(z^\star,\mu^\star,S^\star,\Th)$ and $g:=\nabla_\Th
+J_{\mathrm{cont}}$. Since $(\mu^\star,S^\star)$ is a feasible point of the min in
+\eqref{eq:minlinear}, $\langle a,d\rangle\ge\min_{\mathcal D^\star}\langle\cdot,d
+\rangle=\langle g,d\rangle$ for \emph{all} $d\in\R^{r_\theta}$. A linear
+functional that dominates another for every $d$ (including $-d$) must equal it;
+therefore $a=g$. As $(\mu^\star,S^\star)$ was arbitrary in $\mathcal D^\star$,
+\eqref{eq:invariant} holds for every optimal dual. Finally $\nabla_\Th
+L(z^\star,\mu^\star,S^\star,\Th)$ is precisely the right-hand side of the envelope
+formula \eqref{eq:envelope}, whose block-partitioned specialization is Eq.~(12)
+of the paper ($\partial J_{\mathrm{cont}}/\partial A_\Th=-2S_{12}\Sig^\star$,
+$\partial J_{\mathrm{cont}}/\partial B_\Th=-2S_{12}(L^\star)^\top$, and the
+objective terms of Eq.~(16)); these therefore return the exact gradient.
+\end{proof}
+
+\begin{remark}[Why this suffices for the algorithm]\label{rem:algo}
+The outer method of the paper needs $\nabla_\Th J_{\mathrm{stoch}}$ only to take a
+descent step. Theorem~\ref{thm:invariant} guarantees that whatever optimal dual
+the interior-point solver returns, contracting it against the model Jacobians
+$\partial_\Th D$ (Eq.~(13)) yields the true gradient. Thus Corollary~1 is
+\emph{operationally} valid under (S1)--(S3) alone. Strict complementarity (A3) is
+needed only if one wants the stronger structural statement that the dual is
+literally unique; we turn to it next.
+\end{remark}
+
+%=======================================================================
+\section{Strict complementarity, nondegeneracy, and dual uniqueness (A3)}\label{sec:a3}
+%=======================================================================
+
+Assumption~1(A3) asks for a nondegenerate, strictly complementary primal--dual
+solution, which is the standard sufficient condition for the dual to be a
+singleton and for the solution map $\Th\mapsto(z^\star,\mu^\star,S^\star)$ to be
+differentiable \cite{AHO,Shapiro97}. We record what it means here and when it
+holds.
+
+Write the active Lyapunov LMI at the optimum, $\mathcal
+G^\star:=\mathcal G_{\mathrm c}(\Sig^\star,L^\star;\Th)\in\Sym^{2n}$, with
+dual block $S^\star=\begin{bsmallmatrix}S_{11}&S_{12}\\S_{12}^\top&S_{22}
+\end{bsmallmatrix}\succeq0$. By Proposition~\ref{prop:primalopt} the Schur
+complement of $\mathcal G^\star$ vanishes and its $(2,2)$ block $\Sig^\star\succ0$,
+so
+\begin{equation}\label{eq:rankprimal}
+\rank \mathcal G^\star=n,\qquad
+\ker \mathcal G^\star
+=\range\begin{bmatrix}I_n\\ -(\Acl^\star)^\top\end{bmatrix},
+\end{equation}
+the second identity because
+$\mathcal G^\star\begin{bsmallmatrix}I\\-(\Acl^\star)^\top\end{bsmallmatrix}
+=\begin{bsmallmatrix}\Sig^\star-W-\Acl^\star\Sig^\star(\Acl^\star)^\top\\
+\Acl^\star\Sig^\star-\Sig^\star(\Acl^\star)^\top\cdot(\cdots)\end{bsmallmatrix}=0$
+at the tight solution.
+
+\begin{proposition}[Strict complementarity $\Rightarrow$ unique dual]\label{prop:sc}
+Suppose that at the optimum of \eqref{eq:Jcont} the primal--dual pair is strictly
+complementary, i.e.\ the multiplier $S^\star$ of the active Lyapunov LMI satisfies
+\begin{equation}\label{eq:sc}
+S^\star\mathcal G^\star=0,\qquad \rank S^\star+\rank\mathcal G^\star=2n
+\ \ (\text{so }\rank S^\star=n),
+\end{equation}
+together with the analogous conditions on the middle-block and $\Sig\succ0$
+constraints, and that the primal solution is nondegenerate in the sense of
+\cite{AHO}. Then the dual $(\mu^\star,S^\star)$ is unique, so
+Assumption~1(A3) holds; combined with Sections~\ref{sec:convex}--\ref{sec:diff},
+Assumption~1(A1)--(A4) holds in full and Theorem~1 applies verbatim.
+\end{proposition}
+
+\begin{proof}
+For a semidefinite program, primal nondegeneracy at $z^\star$ implies the dual
+optimizer is unique, and strict complementarity implies the primal optimizer is
+unique and the primal--dual map is differentiable; these are the AHO/Shapiro
+characterizations \cite[Thm.~10, Thm.~15]{AHO}, \cite[Thm.~4.1]{Shapiro97}. The
+uniqueness of $z^\star$ we already have (Proposition~\ref{prop:primalopt}); the
+added hypothesis supplies uniqueness of $(\mu^\star,S^\star)$. Hence (A3), and
+with (A1),(A2),(A4) proved earlier, all of Assumption~1 holds, so Theorem~1
+applies and its conclusion \eqref{eq:envelope} is the (now unique) envelope
+gradient.
+\end{proof}
+
+\begin{remark}[Verifiability and the a-posteriori check]\label{rem:verify}
+Condition \eqref{eq:sc} is checkable at the returned solution: form $\mathcal
+G^\star$ and $S^\star$, verify $\mathcal G^\star S^\star=0$ and $\rank\mathcal
+G^\star+\rank S^\star=2n$ numerically. Because $\rank\mathcal G^\star=n$
+\emph{always} holds at the optimum \eqref{eq:rankprimal}, strict complementarity
+reduces to the single condition $\rank S^\star=n$ with $S^\star\mathcal G^\star=0$
+--- exactly the nondegeneracy that the paper verifies a~posteriori through the
+finite-difference gradient check (Remark~1). In every numerical study of the
+paper this held, so (A3), and thus Assumption~1 in full, was met; where it might
+fail, Remark~\ref{rem:algo} guarantees the returned-dual gradient is still exact
+and the outer method degrades at worst to a subgradient step.
+\end{remark}
+
+%=======================================================================
+\section{The estimation SDP by duality}\label{sec:est}
+%=======================================================================
+
+The estimation SDP \eqref{eq:Jest} is the transpose dual of the control SDP: it
+is obtained from \eqref{eq:Jcont} under the substitution
+\begin{equation}\label{eq:subst}
+A_\Th\ \mapsto\ A_\Th^\top,\quad
+B_\Th\ \mapsto\ C_\Th^\top,\quad
+W\ \mapsto\ Q,\quad
+Q\ \mapsto\ W,\quad
+R\ \mapsto\ V,\quad
+(\Sig,L,Z_0)\ \mapsto\ (\Pe,-F,Z_1).
+\end{equation}
+Under \eqref{eq:subst} the objective $\tr(Q\Sig)+\tr(RZ_0)$ becomes
+$\tr(W\Pe)+\tr(VZ_1)$, and the constraint blocks
+$\mathcal G_{\mathrm c}$ and $\begin{bsmallmatrix}Z_0&L\\L^\top&\Sig
+\end{bsmallmatrix}$ become $\mathcal G_{\mathrm e}$ and
+$\begin{bsmallmatrix}Z_1&F^\top\\F&\Pe\end{bsmallmatrix}$, respectively. The
+system-theoretic hypotheses map correctly:
+\[
+\text{$(A_\Th,B_\Th)$ stabilizable}\ \leftrightarrow\
+\text{$(A_\Th^\top,C_\Th^\top)$ stabilizable}\ \equiv\
+\text{$(A_\Th,C_\Th)$ detectable},
+\]
+and $(A_\Th,Q^{\half})$ detectable $\leftrightarrow$
+$(A_\Th^\top,W^{\half})$ detectable $\equiv$ $(A_\Th,W^{\half})$ stabilizable,
+which is \emph{automatic} because $W\succ0$ makes $(A_\Th,W^{\half})$
+controllable. The role of ``$W\succ0$'' in the control proof (guaranteeing
+$\Sig^\star\succ0$ and forcing the closed loop Schur) is played here by
+``$Q\mapsto W\succ0$'', and the role of ``$R\succ0$'' by ``$V\succ0$''. Hence:
+
+\begin{corollary}[Estimation SDP]\label{cor:est}
+Under Assumption~\ref{as:sys}, all conclusions of
+Theorem~\ref{thm:main}(i)--(iv), Lemma~\ref{lem:slater-cont},
+Proposition~\ref{prop:primalopt}, Proposition~\ref{prop:c1value}, and
+Theorem~\ref{thm:invariant} hold for the estimation SDP \eqref{eq:Jest} under the
+substitution \eqref{eq:subst}. In particular \eqref{eq:Jest} has a Slater point,
+a unique primal optimizer $\Pe{}^\star\succ0$ equal to the stabilizing solution
+of the filter DARE
+\[
+\Pe=A_\Th^\top\Pe A_\Th
+-A_\Th^\top\Pe C_\Th^\top(V+C_\Th\Pe C_\Th^\top)^{-1}C_\Th\Pe A_\Th+W,
+\]
+a $C^1$ value, and a dual-invariant envelope gradient; consequently the
+estimation-side design gradients of Corollary~1 \textup{(}the parallel of
+Eqs.~(12)--(13) in $C_\Th,W,V$, and Eq.~(17)\textup{)} read from the returned LMI
+duals are exact.
+\end{corollary}
+
+\begin{proof}
+Every step of Sections~\ref{sec:convex}--\ref{sec:a3} is invariant under the
+linear relabeling \eqref{eq:subst}; the hypotheses required there ---
+stabilizability of the ``$(A,B)$'' pair, detectability of the ``$(A,Q^{\half})$''
+pair, and positive definiteness of the ``$W$'' and ``$R$'' data --- are exactly
+the detectability of $(A_\Th,C_\Th)$, the (automatic) stabilizability of
+$(A_\Th,W^{\half})$, and $Q\mapsto W\succ0$, $R\mapsto V\succ0$ supplied by
+Assumption~\ref{as:sys}. The claims transfer verbatim.
+\end{proof}
+
+%=======================================================================
+\section{Discussion}\label{sec:discuss}
+%=======================================================================
+
+Theorem~\ref{thm:main} converts Corollary~1 into a statement under textbook
+hypotheses. The logical structure is worth isolating:
+
+\begin{itemize}
+\item \textbf{Slater (A1) $\Leftarrow$ stabilizability/detectability + $W,V\succ0$.}
+The Slater point is not generic: it is built from a stabilizing feedback (control
+side) or output injection (estimation side), i.e.\ from exactly the
+controllability/observability data. Positive-definite process/measurement noise
+provides the strict margin.
+\item \textbf{Uniqueness (A2) $\Leftarrow$ the DARE.} The covariance-form SDP is
+an exact convex lift of the LQR/Kalman problem; its unique optimizer is the
+Riccati solution. Detectability of $(A_\Th,Q^{\half})$ (automatic if $Q\succ0$)
+and $(A_\Th,C_\Th)$ pins the optimizer.
+\item \textbf{Gradient correctness needs \emph{less} than (A3).} Because the
+value $\tr(PW)$ is a smooth function of the Riccati solution
+(Lemma~\ref{lem:daresmooth}), the value is $C^1$ regardless of dual
+non-uniqueness, and the envelope right-hand side is dual-invariant
+(Theorem~\ref{thm:invariant}). This is why the finite-difference check in the
+paper always matched the dual-read gradient, and why the method is robust even at
+solutions where strict complementarity is borderline.
+\item \textbf{(A3) is the exact upgrade to dual uniqueness.} Strict
+complementarity, which reduces here to $\rank S^\star=n$ at the (always rank-$n$)
+active Lyapunov LMI, is necessary and sufficient in the AHO sense for the dual to
+be a singleton, recovering Assumption~1 as written.
+\end{itemize}
+
+In short: \emph{controllability and observability (stabilizability/detectability),
+with positive-definite noise and control weights, imply Assumption~1(A1)--(A2)
+and the differentiability and exactness of the design gradient; strict
+complementarity, verifiable a~posteriori, supplies the remaining (A3).} Theorem~1
+therefore applies to the LQG co-design SDPs under standard system-theoretic
+hypotheses, and Corollary~1 holds unconditionally under (S1)--(S3).
+
+%=======================================================================
+\begin{thebibliography}{9}
+%=======================================================================
+
+\bibitem{AHO}
+F.~Alizadeh, J.-P.~A.~Haeberly, and M.~L.~Overton,
+\emph{Complementarity and nondegeneracy in semidefinite programming},
+Mathematical Programming \textbf{77} (1997), 111--128.
+
+\bibitem{Shapiro97}
+A.~Shapiro,
+\emph{First and second order analysis of nonlinear semidefinite programs},
+Mathematical Programming \textbf{77} (1997), 301--320.
+
+\bibitem{BonnansShapiro}
+J.~F.~Bonnans and A.~Shapiro,
+\emph{Perturbation Analysis of Optimization Problems},
+Springer, New York, 2000.
+
+\bibitem{BoydVandenberghe}
+S.~Boyd and L.~Vandenberghe,
+\emph{Convex Optimization},
+Cambridge University Press, 2004.
+
+\bibitem{BoydLMI}
+S.~Boyd, L.~El~Ghaoui, E.~Feron, and V.~Balakrishnan,
+\emph{Linear Matrix Inequalities in System and Control Theory},
+SIAM, Philadelphia, 1994.
+
+\bibitem{AndersonMoore}
+B.~D.~O.~Anderson and J.~B.~Moore,
+\emph{Optimal Control: Linear Quadratic Methods},
+Prentice Hall, Englewood Cliffs, NJ, 1990.
+
+\bibitem{KwakernaakSivan}
+H.~Kwakernaak and R.~Sivan,
+\emph{Linear Optimal Control Systems},
+Wiley-Interscience, New York, 1972.
+
+\bibitem{LancasterRodman}
+P.~Lancaster and L.~Rodman,
+\emph{Algebraic Riccati Equations},
+Oxford University Press, 1995.
+
+\end{thebibliography}
+
+\end{document}

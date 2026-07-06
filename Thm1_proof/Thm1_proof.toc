@@ -1,0 +1,10 @@
+\contentsline {section}{\numberline {1}Setup and statement}{2}{section.1}%
+\contentsline {paragraph}{Control SDP (Eq.\nobreakspace {}(8)).}{2}{section*.2}%
+\contentsline {paragraph}{Estimation SDP (Eq.\nobreakspace {}(9)).}{2}{section*.3}%
+\contentsline {section}{\numberline {2}Convexity, smoothness of the data, and (A4)}{3}{section.2}%
+\contentsline {section}{\numberline {3}Slater's condition from stabilizability and detectability}{4}{section.3}%
+\contentsline {section}{\numberline {4}Uniqueness of the primal optimizer via the Riccati solution}{4}{section.4}%
+\contentsline {section}{\numberline {5}Value differentiability and the dual-invariant gradient}{6}{section.5}%
+\contentsline {section}{\numberline {6}Strict complementarity, nondegeneracy, and dual uniqueness (A3)}{7}{section.6}%
+\contentsline {section}{\numberline {7}The estimation SDP by duality}{8}{section.7}%
+\contentsline {section}{\numberline {8}Discussion}{9}{section.8}%
