@@ -3,9 +3,9 @@
 #
 # Why this example
 # ────────────────
-# The other studies move the SENSING axis θ_h through what/where one senses: PMU
-# reporting rate (WAMS), a shared sensor budget (ADCS), sensor location
-# (distillation tray), or discrete placement (sensing). Here θ_h instead tunes a
+# The other studies move the SENSING axis θ_h through what/where one senses: a
+# shared sensor budget (ADCS) or sensor location (distillation tray). Here θ_h
+# instead tunes a
 # *dynamic estimator* — the phase-locked loop (PLL) that
 # every grid-following (GFL) inverter uses to estimate grid frequency/phase for
 # its fast-frequency / damping response. That is an estimator design variable
@@ -167,5 +167,6 @@ if abspath(PROGRAM_FILE) == @__FILE__
                        θ_names, θ_roles;
                        contest_f = contest_f, contest_g! = contest_g!,
                        θ_init = θ_nom, θ_nom = θ_nom, θ_lb = θ_lb, θ_ub = θ_ub,
-                       cost_breakdown = cost_breakdown, seed = 20240624, n_starts = 5)
+                       cost_breakdown = cost_breakdown, seed = 20240624, n_starts = 5,
+                       surrogate = θ -> mpc_eval(x_ic, Σ_ic, u_lin, θ; grad = false)[2])
 end

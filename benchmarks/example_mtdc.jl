@@ -22,8 +22,13 @@
 #
 # States  x = [ΔV_i, ΔI_i]  per terminal   (DC-bus voltage, converter current)
 # Inputs  u = supplementary power-reference modulation per terminal
+# Outputs y = ΔV_i (DC-bus voltages telemetered; converter currents estimated)
 # Perf.   z = [Q^{1/2}x; R^{1/2}u]; disturbance channel E=√W (renewable infeed)
 # Design  θ = per-terminal droop coefficient k_i   (enters A: droop feedback)
+#
+# Output feedback ⇒ TWO worst-case game Riccatis: a control GARE (J_det=tr(XW))
+# and a dual filter GARE (J_est=tr(QΣe)). The droop θ enters A, so it moves BOTH,
+# coupling control and estimation at the design level (as in the LQG separation).
 #
 # Run:  julia --project benchmarks/example_mtdc.jl
 
@@ -56,7 +61,16 @@ const σinf = [1.0 + 1.5 * (0.5 + 0.5sin(1.7i + 2)) for i in 1:NT]
 const Qmat = Matrix(Diagonal([iseven(s) ? 0.2 : 60.0 for s in 1:2NT]))  # penalise ΔV ≫ ΔI
 const Rmat = Matrix(2.0 * I(NT))            # moderately expensive supplementary control
 
-# ── Linear model  θ ↦ (A,B,W,Q,R)  (discrete-time) ───────────────────────────
+# ── Measurement model (output feedback): DC-bus VOLTAGES are telemetered, the
+# converter CURRENTS are not — so the estimator must reconstruct the current states
+# from the voltage measurements. This makes MTDC a genuine output-feedback H∞
+# co-design with an estimation half (worst-case H∞ filter), not full-state control.
+const meas_rows = [2i - 1 for i in 1:NT]                 # measured states = ΔV_i
+const Cmat  = Matrix(1.0I, 2NT, 2NT)[meas_rows, :]       # NT × 2NT voltage-selection map
+const v_meas = 1.0e-3                                    # DC-voltage measurement variance
+const Vmeas  = Matrix(v_meas * I(NT))
+
+# ── Linear model  θ ↦ (A,B,W,Q,R,C,V)  (discrete-time) ───────────────────────
 # θ_i = droop-gain scaling: k_i = k0·θ_i enters the converter-current equation
 #   τ İ_i = −I_i − k_i ΔV_i + u_i
 # and couples to the DC-node capacitor balance
@@ -82,7 +96,7 @@ function model(θ)
         W[2i-1, 2i-1] = (dt * σinf[i] / Cdc[i])^2   # infeed disturbance on the DC node
         W[2i, 2i] = 1e-8
     end
-    return Ad, Bd, W, Qmat, Rmat
+    return Ad, Bd, W, Qmat, Rmat, Cmat, Vmeas
 end
 
 # ── Design cost: droop provisioning / converter stress ∝ Σ k_i ───────────────
@@ -102,15 +116,15 @@ J_des(θ)  = c_droop * sum(θ)
 const θ_lb = fill(0.5, NT)
 const θ_ub = fill(4.0, NT)
 
-const hinf_eval = Hinf_θ(2NT, NT; γ² = γ²)
+const of_eval = Hinf_of_θ(2NT, NT, NT; γ² = γ²)
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    @printf("App 5 — MTDC droop coordination (H∞, γ²=%.1f):  %d terminals, %d states, %d design params\n",
-            γ², NT, 2NT, NT)
-    hinf_report("App 5: multi-terminal HVDC DC-voltage droop coordination",
-                ["k[$i]" for i in 1:NT],
-                ["A: droop @ terminal (σ_inf=$(round(σinf[i],digits=1)))" for i in 1:NT];
-                hinf_eval = hinf_eval, model = model, J_des = J_des, ∇J_des = ∇J_des,
-                θ_init = θ_nom, θ_nom = θ_nom, θ_lb = θ_lb, θ_ub = θ_ub,
-                γ² = γ², seed = 20240624, n_starts = 5)
+    @printf("App 5 — MTDC droop coordination (output-feedback H∞, γ²=%.1f):  %d terminals, %d states, %d meas, %d design params\n",
+            γ², NT, 2NT, NT, NT)
+    hinf_of_report("App 5: multi-terminal HVDC DC-voltage droop coordination",
+                   ["k[$i]" for i in 1:NT],
+                   ["A: droop @ terminal (σ_inf=$(round(σinf[i],digits=1)))" for i in 1:NT];
+                   of_eval = of_eval, model = model, J_des = J_des, ∇J_des = ∇J_des,
+                   θ_init = θ_nom, θ_nom = θ_nom, θ_lb = θ_lb, θ_ub = θ_ub,
+                   γ² = γ², seed = 20240624, n_starts = 5)
 end

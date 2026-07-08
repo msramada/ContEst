@@ -18,24 +18,31 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
 ## Simulations
 
 - Examples are the `benchmarks/example_*.jl` files. The ones **included in the
-  paper** are four nonlinear (eKF–MPC) studies — `example_wams.jl` (grid:
-  comms-budgeted PMU rate via `V(θ)` + damping provisioning),
+  paper** are three nonlinear (eKF–MPC) studies —
   `example_adcs.jl` (spacecraft: shared power/mass budget split across
   sensors+wheels via `V(θ)`), `example_distillation.jl` (feed-stage/sensor-tray
   placement), and `example_pll.jl` (PLL/DSE estimator co-design, bias–variance
-  `V(θ)`) — plus one **large-scale linear, robust H∞** study, `example_mtdc.jl`
-  (multi-terminal HVDC droop coordination, control-only `θ_f`, U-shaped worst-case
-  cost `V(θ)=tr(XW)`), which uses the steady-state **H∞ game Riccati** lower level
-  (an indefinite-weight DARE `R̃=diag(R,−γ²I)`, `B̃=[B E]`, `E=√W`, fixed
-  attenuation `γ²=8`; `src/Hinf.jl`) rather than eKF–MPC. The game Riccati reuses
-  `dare`/`dlyap` from `src/LQR.jl` and the same envelope gradient (`∂V/∂A=2XA_cl S`);
-  as `γ→∞` it collapses to the H₂ `tr(PW)`. (The earlier H₂/LQG version was
-  replaced.)
+  `V(θ)`) — plus one **large-scale linear, robust output-feedback H∞** study,
+  `example_mtdc.jl` (multi-terminal HVDC droop coordination, control-side droop `θ_f`,
+  U-shaped worst-case costs), which uses the steady-state **H∞ game Riccati** lower
+  level rather than eKF–MPC (`src/Hinf.jl`, fixed attenuation `γ²=8`). It solves TWO
+  indefinite-weight DAREs: a control GARE (`B̃=[B E]`, `R̃=diag(R,−γ²I)`, `E=√W`) giving
+  `J_det=tr(XW)`, and its DUAL filter GARE (`B̃=[Cᵀ Leᵀ]`, `R̃=diag(V,−γ²I)`, `Le=√Q`)
+  giving `J_est=tr(QΣe)` — DC-bus **voltages measured**, converter currents estimated.
+  Both reuse `dare`/`dlyap` from `src/LQR.jl` with the same envelope gradients
+  (`∂/∂A=2XA_cl S` and its dual `2Σe Ã_cl S̃`); the droop `θ_f` enters `A`, coupling
+  both halves at the design level. As `γ→∞` these collapse to the H₂ `tr(PW)`/Kalman.
+  (The earlier H₂/LQG version was replaced.) Evaluator/report: `Hinf_of_θ`,
+  `hinf_of_report`.
   Every study is posed so its optimum is a genuine **interior / non-monotone**
   trade (budgeted allocation, saturating benefit, or U-shape), not a parameter
   pinned at a bound. (`example_cstr.jl` was removed as trivial; the earlier LQG
   suite `example_inertia.jl`/`example_pss.jl`/`example_bess.jl`/`example_sensing.jl`
-  was removed, keeping only the MTDC study.)
+  was removed, keeping only the MTDC study. The two-area WAMS study
+  (`example_wams.jl`) and all WAMS experiments were removed: on both the LQG and
+  the constrained eKF–MPC paths the co-design gate was ~0–1% over a competent
+  sequential design and the joint optimum degraded inter-area damping — WAMS is
+  sensor-dominated / near-separable, so it is not a defensible co-design headline.)
 - Shared machinery is in `src/` (eKF, MPC, BFGS, `Simulate.jl`) and
   `report_contest.jl` (gradient check + multi-start BFGS + cost/parameter tables).
 - Design optimization uses **multi-start BFGS with 5 initial points**: the
@@ -53,7 +60,7 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
 
 - Run an example's report: `julia --project benchmarks/example_<name>.jl`
 - Regenerate a paper figure: `julia --project make_paper_figs.jl <case>`
-  (`wams` / `adcs` / `distillation` / `pll`)
+  (`adcs` / `distillation` / `pll`)
 - Build the paper: from `Paper_LaTeX/`, run `pdflatex automatica.tex` twice
   (the `.bbl` is committed; `latexmk` may fail on pre-existing bibliography
   issues, so prefer direct `pdflatex` passes).

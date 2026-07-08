@@ -1,0 +1,11 @@
+\contentsline {section}{\numberline {1}What ContEst does, and the axes of comparison}{1}{section.1}%
+\contentsline {section}{\numberline {2}LQG control and sensing co-design (nearest neighbor)}{2}{section.2}%
+\contentsline {section}{\numberline {3}Plant--controller coupling, CCD, and MDO}{3}{section.3}%
+\contentsline {section}{\numberline {4}Structural and information-architecture LMI co-design}{3}{section.4}%
+\contentsline {section}{\numberline {5}Sensor selection for estimation}{4}{section.5}%
+\contentsline {section}{\numberline {6}Sparsity-promoting sensor/actuator selection}{4}{section.6}%
+\contentsline {section}{\numberline {7}Dual control and stochastic/adaptive MPC}{5}{section.7}%
+\contentsline {section}{\numberline {8}Differentiable optimization layers}{5}{section.8}%
+\contentsline {section}{\numberline {9}The engine: envelope theorem and perturbation analysis}{6}{section.9}%
+\contentsline {section}{\numberline {10}Adjacent threads used for positioning}{6}{section.10}%
+\contentsline {section}{\numberline {11}Summary}{7}{section.11}%

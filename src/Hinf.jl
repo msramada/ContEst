@@ -62,6 +62,35 @@ function hinf_gare(A, B, E, Q, R, γ²)
 end
 
 """
+    hinf_filter_gare(A, C, W, V, Le, γ²) -> (Σe, K̃, Ã_cl, ok)
+
+Stabilising solution of the discrete H∞ \emph{filter} game Riccati --- the exact
+DUAL of `hinf_gare`.  For the plant `x⁺=Ax+w`, `y=Cx+v` (process/measurement noise
+covariances `W,V`) and estimation-error output `ζ=Le·x`, the worst-case filter is
+the control GARE on the DUAL system: `Ã=Aᵀ`, augmented input `B̃=[Cᵀ  Leᵀ]`
+(measurement injection + the estimated output, the dual of `[B  E]`), state weight
+`W`, and indefinite weight `R̃=diag(V,−γ²I)`.  Returns the a-priori error covariance
+`Σe`, the dual gain `K̃`, the dual closed loop `Ã_cl=Ã+B̃K̃`, and `ok`
+(admissible when `V+CΣeCᵀ≻0` and `Ã_cl` is Schur).  As `γ→∞` it collapses to the
+Kalman covariance `dare(Aᵀ,Cᵀ,W,V)`.
+"""
+function hinf_filter_gare(A, C, W, V, Le, γ²)
+    n = size(A, 1); ry = size(C, 1); nz = size(Le, 1)
+    Ã = Matrix(A'); B̃ = [Matrix(C') Matrix(Le')]           # n × (ry+nz)
+    R̃ = Matrix([V zeros(ry, nz); zeros(nz, ry) -γ² * I(nz)])
+    try
+        Σe = dare(Ã, B̃, Matrix(W), R̃)
+        K̃  = -(R̃ + B̃' * Σe * B̃) \ (B̃' * Σe * Ã)
+        Ãcl = Ã + B̃ * K̃
+        ok = all(isfinite, Σe) && maximum(abs, eigvals(Matrix(Ãcl))) < 1 - 1e-9 &&
+             isposdef(Symmetric(V + C * Σe * C'))
+        return (Symmetric(Matrix(Σe)), K̃, Ãcl, ok)
+    catch
+        return (Matrix(1e8 * I(n)), zeros(ry + nz, n), zeros(n, n), false)
+    end
+end
+
+"""
     Hinf_θ(rₓ, rᵤ; γ²) -> eval!
 
 Robust (H∞) analogue of `LQR_θ`.  `eval!(model, θ)` returns
@@ -199,6 +228,149 @@ function hinf_report(title, θ_names, θ_roles;
             base.J_tot - opt.J_tot, 100 * (base.J_tot - opt.J_tot) / base.J_tot)
 
     # ── Design-parameter table (best minimum only) ───────────────────────────
+    println("\n── Design parameters: baseline → optimal (best minimum) ────")
+    @printf("  %-12s %10s %10s %11s   %s\n", "param", "baseline", "optimal", "Δ", "enters/role")
+    for i in 1:nθ
+        @printf("  %-12s %10.3f %10.3f %+11.3f   %s\n",
+                θ_names[i], θ_nom[i], best_θ[i], best_θ[i] - θ_nom[i], θ_roles[i])
+    end
+    println(bar)
+    return best_θ, best_J, base, opt
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Output-feedback H∞ co-design: control (state feedback) AND estimation (filter),
+#  the robust analogue of the H₂ separation of Section~\ref{sec:lqg}.  The two game
+#  Riccatis are solved independently for a fixed θ, and their worst-case guaranteed
+#  costs are added:  J_c = J_det + J_est,  with
+#      J_det = tr(X W)     from the control GARE   (hinf_gare),
+#      J_est = tr(M Σe)    from the filter GARE    (hinf_filter_gare, M the
+#                          estimation-error weight; here M = Q).
+#  θ may enter A/B (control) and A/C/V (sensing); both halves contribute to the
+#  gradient through the same envelope identities.  As the design θ moves the shared
+#  dynamics A(θ), it changes BOTH costs, so the two axes are coupled at the design
+#  level even when the fixed-θ game separates (exactly as in the LQG case).
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    Hinf_of_θ(rₓ, rᵤ, r_y; γ²) -> eval!
+
+Output-feedback H∞ evaluator.  `eval!(model, θ)` with
+`model(θ) -> (A,B,W,Q,R,C,V)` (dynamics/actuation, process & measurement noises,
+cost weights, measurement map `C` and measurement covariance `V`) returns
+`(J_c, ∇θJ_c, Ku, J_det, J_est, ok)` where `J_c = J_det + J_est`, `J_det = tr(XW)`
+is the worst-case control cost and `J_est = tr(QΣe)` the worst-case estimation cost
+(estimation-error weight `M=Q`).  The gradient is the sum of the control envelope
+contraction (through `A,B` and the disturbance channel `E=√W`) and the DUAL filter
+contraction (through `Aᵀ,C,V`), read from the two game Riccatis with no solver
+differentiation.  Inadmissible θ (either GARE fails) returns a large finite cost.
+"""
+function Hinf_of_θ(rₓ::Int, rᵤ::Int, r_y::Int; γ²::Real)
+    function eval!(model::Function, θ::AbstractVector)
+        A, B, W, Q, R, C, V = model(θ)
+        E = Matrix(sqrt(Symmetric(Matrix(W))))
+        Le = Matrix(sqrt(Symmetric(Matrix(Q))))            # estimate the Q-weighted state
+        # ── control (state-feedback) and estimation (filter) game Riccatis ──
+        X, K̃c, Ku, Aclc, okc = hinf_gare(A, B, E, Q, R, γ²)
+        Σe, K̃f, Acle, oke     = hinf_filter_gare(A, C, W, V, Le, γ²)
+        (okc && oke) || return (1e8, zeros(length(θ)), zeros(rᵤ, rₓ), 1e8, 1e8, false)
+        Sc = dlyap(Aclc, W)                                # control gramian
+        S̃  = dlyap(Acle, Matrix(Q))                        # dual (filter) gramian, weight M=Q
+        J_det = tr(X * W)
+        J_est = tr(Q * Σe)
+
+        # ── control-side gradient blocks (θ in A,B,E) ──
+        nw = size(E, 2)
+        gAc = 2 * (X * Aclc * Sc)
+        gB̃c = 2 * (X * Aclc * Sc * K̃c')
+        gBc = gB̃c[:, 1:rᵤ]; gEc = gB̃c[:, rᵤ+1:rᵤ+nw]
+        # ── estimation-side gradient blocks (dual; θ in A via Aᵀ, and C,V) ──
+        ry = r_y
+        gÃe = 2 * (Σe * Acle * S̃)                          # ∂J_est/∂Aᵀ
+        gB̃e = 2 * (Σe * Acle * S̃ * K̃f')
+        gCe = Matrix(gB̃e[:, 1:ry]')                        # ∂J_est/∂C   (ry×n)
+        gVe = K̃f[1:ry, :] * S̃ * K̃f[1:ry, :]'               # ∂J_est/∂V   (ry×ry)
+
+        # Model Jacobians (any θ-independent datum contributes zero).  The design
+        # axes covered exactly: A,B (control) and A,C,V (sensing); a θ-dependent
+        # W/Q/R would need the extra multiplier terms of Hinf_θ/filter_θ.
+        Aj  = ForwardDiff.jacobian(t -> model(t)[1], θ)
+        Bj  = ForwardDiff.jacobian(t -> model(t)[2], θ)
+        Ej  = ForwardDiff.jacobian(t -> vec(Matrix(sqrt(Symmetric(Matrix(model(t)[3]))))), θ)
+        Atj = ForwardDiff.jacobian(t -> vec(Matrix(model(t)[1]')), θ)
+        Cj  = ForwardDiff.jacobian(t -> model(t)[6], θ)
+        Vj  = ForwardDiff.jacobian(t -> model(t)[7], θ)
+        ∇ = zeros(length(θ))
+        for k in eachindex(θ)
+            ∇[k] = (tr(gAc' * reshape(Aj[:, k], rₓ, rₓ)) + tr(gBc' * reshape(Bj[:, k], rₓ, rᵤ))
+                    + tr(gEc' * reshape(Ej[:, k], rₓ, nw))
+                    + tr(gÃe' * reshape(Atj[:, k], rₓ, rₓ)) + tr(gCe' * reshape(Cj[:, k], ry, rₓ))
+                    + tr(gVe' * reshape(Vj[:, k], ry, ry)))
+        end
+        return J_det + J_est, ∇, Ku, J_det, J_est, true
+    end
+    return eval!
+end
+
+"""
+    hinf_of_report(title, θ_names, θ_roles; of_eval, model, J_des, ∇J_des,
+                   θ_init, θ_nom, θ_lb, θ_ub, γ², seed=20240624, n_starts=5)
+
+Output-feedback H∞ report: gradient check, multi-start BFGS, and a worst-case cost
+table split into estimation/control/total (`J_est`, `J_det`, `J_c=J_det+J_est`,
+`J_des`, `J_tot`).  `of_eval` is the closure from `Hinf_of_θ`.
+"""
+function hinf_of_report(title, θ_names, θ_roles;
+                        of_eval, model, J_des, ∇J_des,
+                        θ_init, θ_nom, θ_lb, θ_ub, γ², seed = 20240624, n_starts = 5)
+    nθ = length(θ_init)
+    bar = "=" ^ 74
+    println(bar); println("  ContEst (output-feedback H∞, γ²=$(γ²))  —  ", title); println(bar)
+
+    eval_J(θ) = begin
+        Jc, ∇Jc, _, _, _, _ = of_eval(model, θ)
+        (Jc + J_des(θ), ∇Jc .+ ∇J_des(θ))
+    end
+    f, g! = cached_objective(eval_J)
+
+    ∇a, ∇fd, rel = verify_gradient(f, g!, θ_init)
+    println("\n── Gradient verification at θ_init ─────────────────────────")
+    @printf("  analytic : [%s]\n", join((@sprintf("%9.4f", v) for v in ∇a), " "))
+    @printf("  fin.diff : [%s]\n", join((@sprintf("%9.4f", v) for v in ∇fd), " "))
+    @printf("  relative error: %.2e  %s\n", rel,
+            rel < 5e-2 ? "(OK)" : "(WARNING: large discrepancy)")
+
+    println("\n── Multi-start BFGS ($n_starts starts: θ_nom + $(n_starts-1) random) ──")
+    best_J, best_θ, results = multistart_design(f, g!, θ_lb, θ_ub;
+                                                n_starts = n_starts, θ_nom = θ_nom,
+                                                seed = seed, g_tol = 1e-5, iterations = 100)
+    Js = sort([r.J for r in results]); ndistinct = 1
+    for k in 2:length(Js); Js[k] - Js[k-1] > 1e-4 && (ndistinct += 1); end
+    @printf("  starts run: %d   distinct minima found: %d   best J_tot = %.4f\n",
+            n_starts, ndistinct, best_J)
+    println(ndistinct == 1 ?
+            "  → all starts agree: optimum is (numerically) global." :
+            "  → multimodal: reporting the best minimum only (others omitted).")
+
+    breakdown(θ) = begin
+        _, _, _, Jd, Je, _ = of_eval(model, θ)
+        (; J_est = Je, J_det = Jd, J_c = Jd + Je, J_des = J_des(θ), J_tot = Jd + Je + J_des(θ))
+    end
+    base = breakdown(θ_nom); opt = breakdown(best_θ)
+    pct(b, o_) = abs(b) < 1e-9 ? "    — " : @sprintf("%+6.2f%%", 100 * (o_ - b) / b)
+    println("\n── Cost components (worst-case): baseline θ_nom → optimal θ* ──")
+    @printf("  %-28s %12s %12s %12s %8s\n", "component", "baseline", "optimal", "Δ (incr +)", "%")
+    rows = (("Estimation cost  J_est",       base.J_est, opt.J_est),
+            ("Control cost     J_det",       base.J_det, opt.J_det),
+            ("Inner cost  J_c=J_det+J_est",  base.J_c,   opt.J_c),
+            ("Design cost      J_des",       base.J_des, opt.J_des),
+            ("TOTAL   J_tot=J_c+J_des",      base.J_tot, opt.J_tot))
+    for (name, b, o_) in rows
+        @printf("  %-28s %12.4f %12.4f %12.4f  %s\n", name, b, o_, o_ - b, pct(b, o_))
+    end
+    @printf("\n  Net total reduction: %.4f  (%.2f%%)\n",
+            base.J_tot - opt.J_tot, 100 * (base.J_tot - opt.J_tot) / base.J_tot)
+
     println("\n── Design parameters: baseline → optimal (best minimum) ────")
     @printf("  %-12s %10s %10s %11s   %s\n", "param", "baseline", "optimal", "Δ", "enters/role")
     for i in 1:nθ

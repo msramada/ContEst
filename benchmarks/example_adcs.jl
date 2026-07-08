@@ -140,5 +140,6 @@ if abspath(PROGRAM_FILE) == @__FILE__
                        ["f (wheel authority)", "V (star tracker)", "V (rate gyro)"];
                        contest_f = contest_f, contest_g! = contest_g!,
                        θ_init = θ_init, θ_nom = θ_nom, θ_lb = θ_lb, θ_ub = θ_ub,
-                       cost_breakdown = cost_breakdown, seed = 20240624, n_starts = 5)
+                       cost_breakdown = cost_breakdown, seed = 20240624, n_starts = 5,
+                       surrogate = θ -> mpc_eval(x_ic, Σ_ic, u_lin, θ; grad = false)[2])
 end

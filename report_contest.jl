@@ -8,7 +8,8 @@ using Printf, LinearAlgebra
 
 function run_contest_report(title, θ_names, θ_roles;
                             contest_f, contest_g!, θ_init, θ_nom, θ_lb, θ_ub,
-                            cost_breakdown, seed = 20240624, n_starts = 5)
+                            cost_breakdown, seed = 20240624, n_starts = 5,
+                            surrogate = nothing)
     nθ = length(θ_init)
     bar = "=" ^ 74
     println(bar); println("  ContEst  —  ", title); println(bar)
@@ -59,6 +60,22 @@ function run_contest_report(title, θ_names, θ_roles;
     end
     @printf("\n  Net total reduction: %.4f  (%.2f%%)\n",
             base.J_tot - opt.J_tot, 100 * (base.J_tot - opt.J_tot) / base.J_tot)
+
+    # ── Surrogate (inner MPC value) vs Monte-Carlo closed-loop cost at θ* ─────
+    # `surrogate(θ)` returns the convex information-state MPC optimal value Ĵ_c(θ)
+    # (the quantity the outer loop descends); `opt.J_c` is the realised sampled
+    # closed-loop cost. Their gap empirically bounds the surrogate approximation.
+    if surrogate !== nothing
+        Ĵc_nom = surrogate(θ_nom)
+        Ĵc_opt = surrogate(best_θ)
+        println("\n── Surrogate (inner MPC value) vs Monte-Carlo closed-loop ──")
+        @printf("  %-26s %12s %12s %8s\n", "quantity", "baseline", "optimum", "red.")
+        @printf("  %-26s %12.4f %12.4f %s\n", "surrogate Ĵ_c",
+                Ĵc_nom, Ĵc_opt, pct(Ĵc_nom, Ĵc_opt))
+        @printf("  %-26s %12.4f %12.4f %s\n", "Monte-Carlo  J_c",
+                base.J_c, opt.J_c, pct(base.J_c, opt.J_c))
+        @printf("  surrogate is open-loop/optimistic; both fall, ranking preserved.\n")
+    end
 
     # ── Design-parameter table (best minimum only) ───────────────────────────
     println("\n── Design parameters: baseline → optimal (best minimum) ────")

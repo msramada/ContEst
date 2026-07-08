@@ -1,6 +1,6 @@
 # make_paper_figs.jl — closed-loop simulation + figures for the ContEst paper.
 #
-#   julia --project make_paper_figs.jl wams   # (or adcs / distillation / pll)
+#   julia --project make_paper_figs.jl adcs   # (or distillation / pll)
 #
 # Includes one example as a library (its report is guarded), recomputes the
 # optimal design θ* with BFGS, simulates the closed loop (true nonlinear plant +
@@ -10,13 +10,8 @@
 
 ENV["GKSwstype"] = "100"   # headless GR
 
-const CASE = isempty(ARGS) ? "wams" : ARGS[1]
+const CASE = isempty(ARGS) ? "adcs" : ARGS[1]
 const SPEC = Dict(
-    "wams" => (file = "example_wams.jl",
-               title = "WAMS: comms-budgeted PMU rate + damping",
-               sig   = "area-2 speed dev.  dw3",
-               sidx  = 7,                        # Δω_3 (disturbed area-2 machine), layout [Δδ;Δω]
-               tunit = "t  [s]", dt = 0.05),
     "adcs" => (file = "example_adcs.jl",
                title = "Spacecraft ADCS",
                sig   = "pointing error norm  [rad]",
@@ -76,7 +71,10 @@ end
 sigtrace(X) = CASE == "adcs" ? vec(sqrt.(sum(abs2, X[1:3, :]; dims = 1))) : X[SPEC.sidx, :]
 
 # ── cost breakdowns ───────────────────────────────────────────────────────────
-b = cost_breakdown(θ_base); o_ = cost_breakdown(θstar)
+# Role-aware: the eKF–MPC examples define cost_breakdown(θ, role) (baseline =
+# certainty-equivalence, optimum = info-state MPC); distillation has the 1-arg form.
+bd(θ, role) = applicable(cost_breakdown, θ, role) ? cost_breakdown(θ, role) : cost_breakdown(θ)
+b = bd(θ_base, :baseline); o_ = bd(θstar, :optimum)
 
 default(fontfamily = "Computer Modern", legendfontsize = 8, guidefontsize = 9,
         tickfontsize = 8, titlefontsize = 10, framestyle = :box, grid = true)
