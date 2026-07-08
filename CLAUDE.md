@@ -6,9 +6,9 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
 
 ## Key locations
 
-- **`Paper_LaTeX/`** — the paper I am working on. `automatica.tex` is the main
-  manuscript (Automatica format, `autart.cls`); figures live in
-  `Paper_LaTeX/figs/`, references in `Paper_LaTeX/References.bib`.
+- **`ContEst_TeX/`** — the paper I am working on. `main.tex` is the main
+  manuscript (Automatica format, `autart.cls`); references in
+  `ContEst_TeX/References.bib`.
 - **`References/`** — the background material required for the paper. Consult it
   for prior work, definitions, and framing before writing or citing.
 - **`GUIDE.md`** — the guideline that must be followed when creating the
@@ -61,7 +61,7 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
 - Run an example's report: `julia --project benchmarks/example_<name>.jl`
 - Regenerate a paper figure: `julia --project make_paper_figs.jl <case>`
   (`adcs` / `distillation` / `pll`)
-- Build the paper: from `Paper_LaTeX/`, run `pdflatex automatica.tex` twice
+- Build the paper: from `ContEst_TeX/`, run `pdflatex main.tex` twice
   (the `.bbl` is committed; `latexmk` may fail on pre-existing bibliography
   issues, so prefer direct `pdflatex` passes).
 

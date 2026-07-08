@@ -10,7 +10,7 @@ The recipe is system-agnostic: every term below is something *you* supply for
 your own plant, sensors, and design parameters. Copy the structure verbatim and
 fill in the six ingredients.
 
-> **Paper draft.** The [`Paper_LaTeX/`](Paper_LaTeX/) folder holds the draft of
+> **Paper draft.** The [`ContEst_TeX/`](ContEst_TeX/) folder holds the draft of
 > the accompanying paper — the manuscript I am preparing for submission to the
 > *Automatica* journal. It is the authoritative reference for the theory behind
 > this code (the bilevel co-design formulation, the envelope-theorem gradients,

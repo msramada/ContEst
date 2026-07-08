@@ -5,7 +5,7 @@
 # Includes one example as a library (its report is guarded), recomputes the
 # optimal design θ* with BFGS, simulates the closed loop (true nonlinear plant +
 # eKF + receding-horizon MPC) under the BASELINE and the OPTIMAL design with the
-# SAME noise realization, and writes a 2-panel figure to Paper_LaTeX/figs/.
+# SAME noise realization, and writes a 2-panel figure to ContEst_TeX/figs/.
 # It also prints the cost breakdown and θ* used to fill the LaTeX tables.
 
 ENV["GKSwstype"] = "100"   # headless GR
@@ -98,7 +98,7 @@ bar!(p2, xo, ow; bar_width = 0.34, label = lab_opt, color = :firebrick)
 
 plt = plot(p1, p2; layout = (1, 2), size = (760, 300), left_margin = 4Plots.mm,
            bottom_margin = 4Plots.mm, dpi = 200)
-out = joinpath("Paper_LaTeX", "figs", "contest_$(CASE).pdf")
+out = joinpath("ContEst_TeX", "figs", "contest_$(CASE).pdf")
 savefig(plt, out)
 println("saved figure: ", out)
 
