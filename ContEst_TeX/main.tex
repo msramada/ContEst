@@ -43,6 +43,14 @@
 \usepackage{color}
 \usepackage[dvipsnames]{xcolor}
 \usepackage{hyperref}
+% autart.cls does \@addtoreset{section}{part}, so newer hyperref builds section
+% bookmark anchors as \theHpart.<n>. The class never defines \theHpart, so it was
+% written unexpanded into output.out and broke the bookmark pass on Overleaf
+% (Missing \endcsname / Use of \B_section.). Define it as a plain, fully
+% \csname-expandable digit (this article never uses \part, so 0 is always right):
+% this both writes correct anchors AND lets any already-cached bad .out read
+% cleanly, so no "clear cached files" is required on Overleaf.
+\providecommand*{\theHpart}{0}
 
 \newtheorem{assumption}{Assumption}
 \newtheorem{lemma}{Lemma}
@@ -1184,7 +1192,7 @@ sits in $J_{\mathrm{des}}$ and not the inner problem, the envelope gradients
 standard epigraph lift \cite{boyd2004convex}: substitute
 $\lambda_s\|\alpha\|_1\mapsto\lambda_s\mathbf 1^\top t$ and append
 $\alpha\preceq t$ ($\alpha\ge0$), which is smooth (linear in the slacks $t$) over a
-polyhedron, so the (L-)BFGS of Section~\ref{sec:algorithm} keeps its convergence
+polyhedron, so the BFGS of Section~\ref{sec:algorithm} keeps its convergence
 guarantees; equivalently one takes a proximal (soft-threshold) step on
 $\lambda_s\|\alpha\|_1$. When a binary deployment is required, the converged
 $\alpha^\star$ is thresholded (optionally with a fixed-sensor re-solve, or
@@ -1205,17 +1213,27 @@ scenario when several are averaged (Remark~\ref{rem:scenarios});
 (2)~reads off its duals ($S$ or $\lambda$); (3)~assembles the design
 gradient via \eqref{eq:chain} or \eqref{eq:gradmpc}; (4)~adds
 $\nabla J_{\mathrm{des}}$, including the $\ell_1$ subgradient of
-\eqref{eq:Jdes}; and (5)~takes a quasi-Newton (e.g.\ L-BFGS) step with projection
+\eqref{eq:Jdes}; and (5)~takes a quasi-Newton (BFGS) step with projection
 onto $\Theta$. Because the gradients are exact---neither finite-difference nor
-approximate implicit derivatives---the outer iteration retains the fast local
-convergence of quasi-Newton methods, and the dominant per-iteration cost is the
-inner convex solves, which scale polynomially.
+approximate implicit derivatives---the curvature (secant) pairs driving the
+BFGS update are accurate, so, under the usual smoothness and (local)
+strong-convexity assumptions, the outer iteration attains the well-known local
+\emph{superlinear} convergence rate of full BFGS \cite{nocedal2006numerical}. The
+design dimension $r_\theta$ is small (at most a handful of parameters per study),
+so we use full BFGS rather than its limited-memory variant \cite{liu1989limited}:
+the dense inverse-Hessian approximation costs nothing to store at this scale and
+retains the full curvature history, whereas L-BFGS would only trade that away for a
+weaker (R-linear) rate that buys nothing here. The dominant per-iteration cost is
+the inner convex solves, which scale polynomially.
 
 \emph{Stationarity.} When the objective is smooth---the LQG and fixed-$\gamma$
 $H_\infty$ regimes, where Propositions~\ref{prop:lqgreg} and~\ref{prop:hinfreg}
-make $J\in C^1$, and the nonlinear surrogate~\eqref{eq:mpc} likewise---every
-accumulation point of the projected quasi-Newton iterates is a stationary point of
-$J$ over $\Theta$ \cite{beck2017first}. The one nonsmooth term, the sparsity
+make $J\in C^1$, and the nonlinear surrogate~\eqref{eq:mpc} likewise---and the
+projection is onto the box $\Theta$, standard globalization applies: with an
+Armijo/Wolfe line search and scaling matrices whose eigenvalues stay uniformly
+bounded and bounded away from zero, every accumulation point of the projected
+(quasi-Newton) iterates is a stationary point of $J$ over $\Theta$
+\cite{beck2017first,birgin2000nonmonotone}. The one nonsmooth term, the sparsity
 penalty $\lambda_s\|\alpha\|_1$ of \eqref{eq:Jdes}, is handled without forfeiting
 this guarantee by the epigraph lift of Section~\ref{sec:sensor} (equivalently, a
 proximal-gradient step on the composite objective \cite{beck2017first}).
@@ -1237,11 +1255,13 @@ use the eKF--MPC second stage of Section~\ref{sec:ekf}: the convex program
 \eqref{eq:mpc} is solved with the Clarabel interior-point solver, and the design
 gradient is assembled from the dynamics costates through \eqref{eq:gradmpc}.
 The outer loop is the projected quasi-Newton method of
-Section~\ref{sec:algorithm} (L-BFGS) over the box $\Theta$, run from $5$ initial
+Section~\ref{sec:algorithm} (BFGS) over the box $\Theta$, run from $5$ initial
 points---the baseline design $\theta_{\mathrm{nom}}$ plus four uniform random
 restarts in $\Theta$---keeping the best minimizer. For the ADCS and PLL
-studies all five starts \emph{converge to the same minimizer}, so the reported
-design is the global optimum over $\Theta$ to numerical tolerance; the distillation
+studies all five starts \emph{converge to the same minimizer}, which we report as
+the design; agreement across independent restarts is strong empirical evidence
+that it is globally optimal over $\Theta$, though multi-start alone certifies only
+that it is the best of the starts and not a global optimum. The distillation
 study is genuinely multimodal (the restarts resolve three distinct minima), and we
 report the best, the restarts escaping the local optimum the baseline start alone
 would return. The envelope-theorem gradients are exact, so we do not verify them
@@ -1283,7 +1303,7 @@ information-state MPC is expensive to simulate in closed loop, instead reports t
 open-loop surrogate $\widehat J_c$ of \eqref{eq:mpc} directly, with
 $J_{\mathrm{est}}=\sum_t\operatorname{tr}(Q\Sigma_{t\mid t})$ from the eKF
 covariance rollout.) The design optimization itself is unchanged---multi-start
-L-BFGS on the envelope-gradient objective. As anticipated by the exactness ledger
+BFGS on the envelope-gradient objective. As anticipated by the exactness ledger
 (Table~\ref{tab:ledger}), the surrogate $\widehat J_c$ is an \emph{open-loop}
 planned cost and is therefore optimistic relative to the noise-driven realized cost
 $J_c$; what matters for design is that minimizing the surrogate also lowers the realized
@@ -1447,7 +1467,7 @@ $Q_{ii}=20+30\,e^{-(i-6.5)^2/2(12/5)^2}$ (heaviest mid-column), $R=2$,
 $|u|\le1.5$, with a mild placement regularization
 $\lambda_{\mathrm{des}}\lVert\theta-\theta_{\mathrm{nom}}\rVert^2$.
 
-\emph{Results.} The design landscape is multimodal: the five-start L-BFGS resolves three distinct
+\emph{Results.} The design landscape is multimodal: the five-start BFGS resolves three distinct
 minima, and the baseline start alone converges to an inferior one, so the random
 restarts are what recover the reported optimum. ContEst spreads the feed
 streams---two settle lower toward the reboiler ($f_{1,2}:3.0,4.5\to2.5,3.6$) while
@@ -1571,8 +1591,8 @@ readout---the bias--variance knob $\theta_h$ resolves.
 
 \emph{Results.} Here the envelope-theorem gradient flows through the
 \emph{design-dependent covariance} $V(\theta)$---the numerical exercise of the
-noise-level extension of Section~\ref{sec:weights}. All five starts converged to the same minimizer, so the
-reported design is the global optimum over $\Theta$ to numerical tolerance. The
+noise-level extension of Section~\ref{sec:weights}. All five starts converged to the same minimizer,
+strong empirical evidence---though not a certificate---that the reported design is globally optimal over $\Theta$. The
 naive uniform PLL ($b=6$) is too sluggish; ContEst raises every bandwidth but
 tunes each to its local signal-to-noise, most aggressively at the disturbed bus
 ($b_1\!:\,6\to13.7$) and moderately at the quiet buses
@@ -1681,7 +1701,7 @@ $J_{\mathrm{est}}$ vary over a common $\theta$ and the co-design does not separa
 We take the $O(r_x^3)$ game-Riccati route (Section~\ref{sec:hinf}); the SDP form
 \eqref{eq:Hinf_cont}--\eqref{eq:Hinf_est} is avoided because, at the interior
 $\gamma$ optimum it minimizes over, its LMIs are rank-deficient and their duals
-ill-conditioned (Section~\ref{sec:sim:complexity}). The outer L-BFGS loop of
+ill-conditioned (Section~\ref{sec:sim:complexity}). The outer BFGS loop of
 Section~\ref{sec:algorithm} runs from $5$ starts ($\theta_{\mathrm{nom}}$ plus four
 random restarts). The design gradient here sums the control and the \emph{dual
 filter} envelope contractions.
@@ -1720,7 +1740,8 @@ the DC-bus voltages $\Delta V_i$ are measured, so the converter currents must be
 estimated.
 
 \emph{Results.} All five
-starts agree, so the optimum is numerically global. Consistent with the $U$-shaped
+starts agree, giving strong empirical evidence (not a certificate) that the reported
+optimum is global over $\Theta$. Consistent with the $U$-shaped
 $J_c$, ContEst \emph{lowers} the over-provisioned droop to an interior,
 disturbance-dependent profile ($\theta\in[0.66,0.92]$, none at a bound; noisier
 terminals keep slightly higher droop), pulling the terminals off the resonance
@@ -1800,7 +1821,7 @@ baseline & 25 & 1.08 & 2.78 & 3.86 \\
 Because the envelope theorem (Section~\ref{sec:envelope}) yields the design
 gradient from the \emph{primal and dual of a single inner solve}---never by
 differentiating through the solver's iterations---the per-design work is one inner
-solve plus a gradient contraction, and the outer L-BFGS iteration inherits the
+solve plus a gradient contraction, and the outer BFGS iteration inherits the
 complexity class of the inner solver. The gradient contraction is cheap: forming
 $\partial J/\partial\theta$ from the stored primal/dual costs
 $O(r_x^2\,r_\theta)$ (the automatic-differentiation Jacobians of the model
