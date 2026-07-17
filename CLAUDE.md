@@ -22,18 +22,26 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
   `example_adcs.jl` (spacecraft: shared power/mass budget split across
   sensors+wheels via `V(θ)`), `example_distillation.jl` (feed-stage/sensor-tray
   placement), and `example_pll.jl` (PLL/DSE estimator co-design, bias–variance
-  `V(θ)`) — plus one **large-scale linear, robust output-feedback H∞** study,
-  `example_mtdc.jl` (multi-terminal HVDC droop coordination, control-side droop `θ_f`,
-  U-shaped worst-case costs), which uses the steady-state **H∞ game Riccati** lower
-  level rather than eKF–MPC (`src/Hinf.jl`, fixed attenuation `γ²=8`). It solves TWO
-  indefinite-weight DAREs: a control GARE (`B̃=[B E]`, `R̃=diag(R,−γ²I)`, `E=√W`) giving
-  `J_det=tr(XW)`, and its DUAL filter GARE (`B̃=[Cᵀ Leᵀ]`, `R̃=diag(V,−γ²I)`, `Le=√Q`)
-  giving `J_est=tr(QΣe)` — DC-bus **voltages measured**, converter currents estimated.
-  Both reuse `dare`/`dlyap` from `src/LQR.jl` with the same envelope gradients
-  (`∂/∂A=2XA_cl S` and its dual `2Σe Ã_cl S̃`); the droop `θ_f` enters `A`, coupling
-  both halves at the design level. As `γ→∞` these collapse to the H₂ `tr(PW)`/Kalman.
-  (The earlier H₂/LQG version was replaced.) Evaluator/report: `Hinf_of_θ`,
-  `hinf_of_report`.
+  `V(θ)`) — plus one **linear, robust (H∞) two-axis** study,
+  `example_mtdc.jl` (multi-terminal HVDC, 30 states / `NT=15` terminals): a MERGED
+  co-design of the **control droop `θ_f=k`** (enters `A`) via the **H∞ game Riccati**
+  (`src/Hinf.jl` `hinf_gare`, fixed `γ²=8`, `J_det=tr(XW)`, U-shaped worst-case cost)
+  AND the **sensing gains `θ_h=α`** (enter `C`) via an **ℓ1 covariance-SDP**
+  (JuMP/Clarabel): posterior error-cov bound `X ⪰ (Σ_pred(θ)⁻¹ + Σⱼ αⱼ CⱼᵀCⱼ/v)⁻¹`
+  with `Σ_pred(θ)=dlyap(A(θ),W)`, sparse ℓ1 sensor selection, and **per-converter-current
+  estimation caps `[X]_{2i,2i} ≤ tol`** (`J_est=tr(QX)`). The caps + discrete selection
+  make the estimation half **SDP-only** (no Riccati expresses per-state covariance caps
+  with an active set); the cap duals are **shadow prices** localizing essential sensors
+  (terminal 11), with an **infeasibility floor** below the all-on covariance. The droop
+  enters `A`, so it reshapes BOTH `X` (game Riccati) and `Σ_pred(θ)` (estimation prior),
+  coupling the two axes. Report `mtdc_report()` prints: (A) droop co-design (all 15
+  sensors: `J_det −38.2%`, `J_est −60.8%`, `J_tot −49.7%`), (B) ℓ1 frontier, (C) capped
+  ℓ1-SDP + shadow prices, (D) merged optimum (4 of 15 sensors `{4,7,11,12}`, `J_c −40.9%`).
+  Droop step: `Optim` `Fminbox(LBFGS())` on `Jdet+Jest+c_k Σθ`; sensor step: `sensor_sdp`
+  (Clarabel). (The earlier 50-state droop-only `Hinf_of_θ`/`hinf_of_report` version — a
+  dual filter GARE `J_est=tr(QΣe)` with no sensor allocation — was replaced; see
+  `MTDC_old_example_summary.md`. `Hinf_of_θ`/`hinf_filter_gare` remain in `src/Hinf.jl`
+  but are no longer used by the example.)
   Every study is posed so its optimum is a genuine **interior / non-monotone**
   trade (budgeted allocation, saturating benefit, or U-shape), not a parameter
   pinned at a bound. (`example_cstr.jl` was removed as trivial; the earlier LQG
@@ -53,8 +61,8 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
   trajectories of the original cost** (`simulate_mc` in `src/Simulate.jl`), both
   components on the true state; the **baseline is a certainty-equivalence
   controller (eKF mean only)** via `certainty_equivalence_mpc`, the ContEst optimum
-  the information-state MPC. Only reporting changed, not `best_θ`. MTDC (LQG path)
-  keeps its exact steady-state value.
+  the information-state MPC. Only reporting changed, not `best_θ`. MTDC keeps its
+  exact steady-state values (H∞ game-Riccati control + covariance-SDP estimation).
 
 ## Commands
 

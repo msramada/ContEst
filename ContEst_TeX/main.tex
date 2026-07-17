@@ -15,6 +15,7 @@
 
 \documentclass[twocolumn,amsthm]{autart}
 
+
 \usepackage[utf8]{inputenc}
 \usepackage{comment}
 \usepackage{algorithm}
@@ -70,13 +71,14 @@
 \usepackage{soul}
 \newcommand{\cut}[1]{{\color{blue} \st{#1}}} % replace with {} to cut for real
 \newcommand{\add}[1]{{\color{red} #1}} % replace blue with black to add for real
+\newcommand{\concern}[1]{{\color{red} #1}} % replace blue with black to add for real
 \newcommand{\matlab}{\mbox{\textsc{Matlab}}}
 
 \begin{document}
 
 \begin{frontmatter}
 
-\title{Control and Estimation Co-Design\thanksref{footnoteinfo}}
+\title{Control and Estimation Co-Design via Envelope-Theorem Exact Gradients\thanksref{footnoteinfo}}
 
  \thanks[footnoteinfo]{Corresponding author M.~S.~Ramadan. This material was
  based upon work supported by the U.S.\ Department of Energy, Office of Science,
@@ -96,29 +98,18 @@ Semidefinite programming; Sensor placement; Sensitivity analysis.
 \end{keyword}
 
 \begin{abstract}
-We extend control co-design to incorporate state and parameter estimation,
-under the umbrella of stochastic optimal control (dual control). The proposed
-framework, Control and Estimation Co-Design (ContEst), parametrizes the plant
-dynamics, the output operator, and the noise covariances to represent design
-choices such as actuator tuning, sensor placement, measurement configuration, and
-the tuning of the estimator itself; these parameters
-affect both closed-loop performance and estimator accuracy. In place of the
-sequential plant--control--estimator pipeline, which is in general suboptimal,
-ContEst poses a single two-stage problem solved by first-order methods. A key
-enabler is that the gradient of each inner control--estimation value with
-respect to the design parameters is available exactly from the dual variables
-the inner solver already returns, by the envelope theorem; no differentiation
-through the optimizer or its optimality conditions is needed. We instantiate the
-framework in a linear--quadratic--Gaussian regime, where the control and
-estimation costs become two semidefinite programs whose design gradients are
-read from the duals of Lyapunov constraints; in a robust ($H_\infty$)
-instantiation, where the same two axes become worst-case control and filtering
-problems solved by a pair of game Riccati equations sharing the identical
-envelope gradient; and in a locally linearized regime, where an extended Kalman
-filter yields a convex information-state model predictive control problem whose
-design gradients are read from the dynamics costates. We also show how sensor
-allocation, a discrete (mixed-integer) selection, admits a convex $\ell_1$
-relaxation that promotes sparse sensing.
+Instead of the sequential plant--control--estimator design pipeline, which is in general suboptimal,
+we propose the Control and Estimation Co-Design (ContEst) framework, which poses the entire design problem as a single two-stage problem solved by first-order methods. A key
+enabler is that the gradient of each inner control/estimation optimal cost with
+respect to the design parameters is available from the dual variables
+the inner solver already returns, by the envelope theorem: exactly under mild
+regularity (a unique inner minimizer), and as a subgradient in the worst cases
+where the minimizer is non-unique. That is, no differentiation
+through the optimizer or its optimality conditions is needed. We first present the
+framework in a linear quadratic Gaussian (LQG) regime, where the control and
+estimation costs become two semidefinite programs (SDPs) whose design gradients are
+read from the duals of the Lyapunov constraints. We extend the results to robust ($H_\infty$)
+formulation to cover worst-case control and filtering problems. Furthermore, we present an extension to constrained and nonlinear systems, using an extended Kalman filter (eKF) and a local linearization of the information-state dynamics to yield an approximate but convex model predictive control (MPC) problem whose design gradients are read directly from the costates. We apply our methods to a variety of realistic design examples from different fields and report significant design improvements.
 \end{abstract}
 
 \end{frontmatter}
@@ -127,97 +118,66 @@ relaxation that promotes sparse sensing.
 \section{Introduction}\label{sec:intro}
 %=======================================================================
 
-Engineering systems are still, overwhelmingly, designed \emph{sequentially}. A
-plant is conceived and sized by one set of disciplines; the sensing and
-instrumentation are specified next; and the controller and estimator are
-designed last, once the plant and the measurement chain are frozen
-\cite{garcia2019control}. Each stage constrains the next, so decisions made
-early---before any closed-loop consideration---silently bound the performance
-achievable at the end. This division of labor is convenient and entrenched, but
-it is in general \emph{not optimal}: the sequential solution is one feasible
-point of a larger joint problem and need not be a stationary point of it, because
-the plant and controller optimizations are \emph{coupled}~\cite{fathy2001coupling},
-which motivates solving them jointly~\cite{garcia2019control}.
+Engineering systems are still, overwhelmingly, designed sequentially. A
+plant is first conceived by some set of disciplines, the sensing and
+instrumentation are specified next, and the controller and estimator are
+designed last, once the plant, actuation and the measurement chain is frozen
+\cite{garcia2019control}. Each stage restricts the next, so decisions made
+early on, before any closed-loop consideration, can bound the performance
+achievable at the end. This division of design effort is convenient, but
+it is in general not optimal: the sequential solution (if exists) is one feasible
+point of a larger joint problem and need not be an optimal or even a stationary point of it \cite{fathy2001coupling}.
 
-\emph{Control co-design} (CCD) addresses this on the control side, optimizing the
-plant and the controller together~\cite{garcia2019control,allison2014multidisciplinary}---%
-either by \emph{nested} strategies (an inner controller solve inside an outer plant
-search) or by \emph{simultaneous} ones that optimize both at once, contrasted
+Control co-design (CCD) addresses this on the control side, optimizing the
+plant and the controller together~\cite{garcia2019control,allison2014multidisciplinary}, either by nested strategies (an inner controller design inside an outer plant
+search) or by simultaneous ones that optimize both at once, contrasted
 in~\cite{herber2019nested}. The same idea appeared in
-process systems engineering as \emph{integrated design and control}
-\cite{sakizlis2004recent,sharifzadeh2013integration} and in aerospace as
-\emph{simultaneous structure/control design}
-\cite{onoda1987approach,hale1985optimal}. What these literatures share is a
-plant-plus-controller scope: the \emph{sensing} and the \emph{estimator} are
-typically fixed, or reduced to a separate sensor-selection step. Yet for any
-system that is not fully and noiselessly measured---essentially every real
-system---achievable performance is limited by what the estimator can infer,
-which is set by where and how well one senses. This echoes the classical
-input--output controllability principle that the best attainable closed-loop
-performance is fixed by the plant together with the sensor and actuator
-configuration, and cannot be recovered by the controller alone
-\cite{skogestad2005multivariable}. Sensor placement, precision, and
-configuration are design variables on the same footing as actuator authority,
-and they couple to the controller through the information available for
+process systems engineering as integrated design and control \cite{sakizlis2004recent,sharifzadeh2013integration} and in aerospace as
+simultaneous structure/control design \cite{onoda1987approach,hale1985optimal}. What these literatures share is a
+plant-controller scope: the sensing configuration and the estimator design are
+typically fixed, or reduced to separate steps. Yet for any
+system without full and noiseless measurements (i.e. almost every real
+system), achievable control performance is limited by the sensing and estimation quality. Therefore, sensor placement, precision, and configuration are design variables on the same footing as actuator authority, and they couple to the controller through the information available for
 feedback.
 
-This paper proposes \emph{Control and Estimation Co-Design} (ContEst): the
-design parameters governing actuation \emph{and} sensing/estimation are placed
-in one two-stage optimization, whose second-stage objective is the stochastic
-optimal control (dual control) value \eqref{eq:Jstoch}---the notion, originating
-with Feldbaum, that the optimal input must at once regulate the state and probe to
-reduce its uncertainty~\cite{feldbaum1960dual,bar1974dual,mesbah2018stochastic}. Because that cost is
-stochastic, it depends on the system not through the unobserved state but through
-its \emph{information state}---the filtering density
-\cite{kumar2015stochastic}---whose evolution explicitly involves the output
-equation. Optimizing it therefore improves the controller, the estimator, and
-their interaction at once. A caveat we make precise in
-Section~\ref{sec:ekf}: we reserve ``dual control'' for the exact value
-\eqref{eq:Jstoch}, whose input has the Bar-Shalom--Tse \emph{dual effect} of
-acting on the state \emph{and} on the information gathered
-\cite{bar1974dual,mesbah2018stochastic}; the tractable eKF surrogate we optimize
-in the nonlinear regime is \emph{caution-aware} (it prices estimation uncertainty
-through $\operatorname{tr}(Q\Sigma_{t\mid t})$) but, after linearizing the
-information dynamics, \emph{certainty-equivalent in the mean}---it captures
-\emph{caution} (hedging against estimation uncertainty) but not \emph{active
-probing} (injecting inputs deliberately to reduce it). The very prevalence of sequential
-design is thus an opportunity: many existing systems can be revisited and
-improved by a joint design pass, often without changing the hardware menu, only
-how its continuous parameters are chosen.
+This paper proposes the Control and Estimation Co-Design (ContEst) framework, in which the design parameters governing actuation and sensing/estimation are placed in one two-stage optimization whose second-stage objective is the stochastic optimal control (dual control) cost. Because that cost is
+stochastic, it depends on the system not through the unobserved state but through its information state (commonly the filtering density
+\cite{kumar2015stochastic}), whose evolution couples the output
+equation and the state dynamics; optimizing through it therefore improves the controller and the estimator jointly. Mathematically, we solve the first stage with first-order methods (e.g.\ BFGS) driven by the design gradient, which the envelope theorem supplies from the inner solver's dual variables---exactly under a unique inner minimizer, and as a subgradient otherwise. Because deployed systems are almost always designed sequentially, they sit at feasible but generally non-stationary points of this joint problem, and can be revisited and improved by a single joint design pass---often without altering the hardware menu, only how its continuous parameters are chosen. Across our studies this yields $6$--$50\%$ total-cost reductions in which the sensing axis $\theta_h$, absent from control-only co-design, is a major and sometimes dominant contributor.
 
-\noindent\textbf{Contributions.}~
-(i)~We formulate co-design of control \emph{and} estimation as a single two-stage
-problem (Problem~\ref{prob:bilevel})---a design first stage over a stochastic
-control recourse (the second-stage control response)---expressed through the
-information state, so
-the sensing operator enters the objective explicitly
-(Section~\ref{sec:formulation}). (ii)~We show that the design gradient of each
-inner value function is obtained \emph{exactly} from the dual variables the inner
-convex solver already returns, by the envelope theorem
-(Theorem~\ref{prop:envelope}, Section~\ref{sec:envelope})---which gives the
-gradient of an optimal-value function from the optimizer alone, without
-differentiating through it; no implicit
-differentiation and no differentiation of the Karush--Kuhn--Tucker (KKT) system
-is needed---only cheap model Jacobians. (iii)~In the linear--quadratic--Gaussian
-(LQG) regime we reduce the inner problem, via the classical separation of
-estimation and control, to a control and an
-estimation semidefinite program (SDP), with gradients read from the duals of the
-Lyapunov constraints (Section~\ref{sec:lqg}). (iv)~In the locally linearized
-regime an extended Kalman filter (eKF) lifts the problem to an information state
-and a convex model predictive control (MPC) problem, with gradients read from the
-dynamics costates (adjoint variables; Section~\ref{sec:ekf}). (v)~We treat sensor allocation as a
-mixed-integer selection and show its $\ell_1$ relaxation promotes sparse sensing
-(Section~\ref{sec:sensor}). Section~\ref{sec:algorithm} states the outer
-algorithm and Section~\ref{sec:numerical} four co-design studies spanning
-spacecraft, process, and power systems.
+\emph{Contributions:}
+\begin{itemize}
+    \item We formulate the control and estimation co-design problem as a single two-stage problem: a design first stage over an output feedback stochastic optimal control problem
+    \item We show that the design gradient through the stochastic optimal control problem is obtained exactly from the dual variables the inner
+    convex solver already returns, by the envelope theorem, without
+    differentiating through it. That is, no implicit differentiation and no differentiation of the Karush-Kuhn-Tucker (KKT) system
+    is needed. Therefore, the gradients computation comes with no (or trivial) cost. 
+    
+    \item For a plain linear--quadratic inner value this recovers the
+    classical parametric-LQ two-gramian gradient
+    \cite{levine1970determination,makila1987computational}; our contribution is
+    the \emph{uniform} envelope identity covering the control \emph{and}
+    estimation halves across the $H_2$, $H_\infty$, and eKF--MPC inner problems.
+    Casting the inner problems as SDPs further buys modeling flexibility the
+    Riccati route cannot express: convex design regularizers, quadratic stability
+    over a polytopic (convex-hull) uncertainty set, gain-scheduling certificates,
+    and structural/sparsity constraints on the control and estimator gains.
+    \item We present the formulas for these exact gradients in $H_2$ (LQG) and $H_\infty$ formulations, as a pair of or more semidefinite programs (SDPs)
+    \item As an approximate yet practical extension to constrained nonlinear dynamics, a regime built around the linearization of the information state is used to construct a convex model predictive control (MPC) problem, with approximate gradients read from the
+    dynamics costates (adjoint variables).
+    \item Sensor allocation is absorbed directly into the formulation, either as a mixed-integer selection or as an $\ell_1$ relaxation promoting sparse sensing.
+    \item We validate the framework on four realistic co-design studies across spacecraft, process, and power systems, with diverse objectives and modeling techniques.
+\end{itemize}
 
-Throughout, $\| x \|_Q^2 = x^\top Q x$, $\mathbb{E}$ is expectation,
+Throughout, $\| x \|_Q^2 = x^\top Q x$, $\mathbb{E}$ denotes expectation,
 $\operatorname{tr}(\cdot)$ the trace, and $M \succeq 0$ ($M \succ 0$) positive
-(semi)definiteness. The information available at time $k$ is
-$\mathcal{Z}_k = (y_{0:k}, u_{0:k-1})$.
+(semi)definiteness. For a signal $s$, $s_{i:j} = (s_i, s_{i+1}, \dots, s_j)$ denotes
+the sequence from time $i$ to $j$. The information available at time $k$---all past
+measurements and applied inputs---is thus $\mathcal{Z}_k = (y_{0:k}, u_{0:k-1})$.
+Each symbol is also recalled where it first appears in the development below.
 
 %=======================================================================
-\section{Background and related work}\label{sec:related}
+\section{Related work}\label{sec:related}
 %=======================================================================
 
 \emph{Control co-design and integrated design.}
@@ -225,91 +185,67 @@ $\mathcal{Z}_k = (y_{0:k}, u_{0:k-1})$.
 coupled and cannot be separated without loss; \cite{allison2014multidisciplinary}
 cast dynamic-system CCD as multidisciplinary design optimization (MDO); and
 \cite{herber2019nested} systematized the nested and simultaneous solution
-strategies. In process systems
-engineering the same idea was developed largely as mixed-integer dynamic
-optimization under uncertainty \cite{diangelakis2017process},
-built on Biegler's simultaneous full-discretization approach
-\cite{biegler2010nonlinear} and reviewed in
-\cite{sakizlis2004recent,sharifzadeh2013integration}. In all of
-these the estimator and sensing layer are typically assumed fixed.
+strategies. In all of these the estimator design and sensing layers are typically assumed fixed.
 
 \emph{Structural co-design and information architecture.}
-The structural-control community produced the linear-matrix-inequality (LMI)
-machinery on which our linear regime rests. Following early
-simultaneous structure/control designs \cite{onoda1987approach,hale1985optimal},
-\cite{grigoriadis1998integrate} alternated a control LMI with a
-plant/actuator-parameter LMI---a direct ancestor of our control SDP. Closest to
-the present work, \cite{li2008integrating} treated the \emph{information
-architecture} (sensor/actuator gains) as decision variables jointly with control
-or estimation via LMIs, and \cite{saraf2017h2,das2017sparse} pushed this toward
-sparse $H_2$ sensing with guaranteed estimation-error bounds.
+\cite{grigoriadis1998integrate} alternated a control linear matrix inequality (LMI) with a plant parameter design. Closest to the present work, \cite{li2008integrating} treated the \emph{information architecture} (sensor/actuator gains) as decision variables jointly with control or estimation via linear matrix inequality LMIs, and \cite{saraf2017h2,das2017sparse} pushed this toward sparse $H_2$ sensing with guaranteed estimation-error bounds. These methods alternate LMIs over gains for a fixed plant and cost class, whereas ContEst places actuation, sensing, and the estimator itself in one stochastic objective and obtains the design gradient exactly from the inner duals rather than by alternation.
 
 \emph{Sensor selection and LQG sensing co-design.}
-A large literature treats sensor (and actuator) selection \emph{for estimation}:
-convex relaxation \cite{joshi2009sensor}, submodularity and greedy algorithms for
-Kalman filtering and network observability
-\cite{tzoumas2016sensor,zhang2017sensor}, and
-sparsity-promoting joint selection \cite{dhingra2014admm}. These
-covariance-based criteria are the control-theoretic face of optimal experimental
-design, where information is measured by convex functions of the error covariance
-or Fisher information; our estimation cost
-$\operatorname{tr}(Q\Sigma^\varepsilon)$ is of A-optimal type. The identification
-community's \emph{least-costly experiment design}
-\cite{gevers2005identification}---minimizing experiment cost
-subject to a closed-loop performance requirement---is the direct sibling of
-designing the noise level $V(\theta)$ against closed-loop cost, which our
-weight/noise co-design (Section~\ref{sec:weights}) does inside the loop rather than
-as a separate identification stage. The closest work to ours
-is \cite{tzoumas2021lqg}, who co-design sensing with LQG control through the
-separation structure; see also the joint scheduling separation result of
-\cite{siami2021separation} and the compositional view of \cite{zardini2021codesign}.
-These typically choose \emph{which} sensors to deploy from a discrete menu, in
-the linear/LQG regime.
+A large literature selects sensors (or actuators) \emph{for estimation} via
+convex relaxation \cite{joshi2009sensor}, submodularity and greedy algorithms
+\cite{tzoumas2016sensor,zhang2017sensor}, or sparsity-promoting selection
+\cite{dhingra2014admm}. These covariance-based criteria are the control-theoretic
+face of optimal experimental design (our estimation cost
+$\operatorname{tr}(Q\Sigma^\varepsilon)$ is of A-optimal type), and the
+identification community's least-costly experiment design
+\cite{gevers2005identification} is a sibling of our in-the-loop noise-level
+co-design (Section~\ref{sec:weights}).
+Closest to us, \cite{tzoumas2021lqg} co-design sensing with LQG control through
+the separation structure (see also \cite{siami2021separation,zardini2021codesign});
+but these choose \emph{which} sensors to deploy from a discrete menu, in the
+linear/LQG regime.
 
-\emph{Dual control.}
-That estimation belongs inside the control objective is the content of dual
-control \cite{feldbaum1960dual}: an input has a \emph{dual effect}, acting on the
-state and on the information gathered about it \cite{bar1974dual}. The
-exploration--exploitation reading is surveyed in \cite{mesbah2018stochastic}.
 
 \emph{Differentiable optimization and the envelope theorem.}
-Our gradient computation is classical sensitivity analysis
-\cite{bonnans2000perturbation} and the envelope theorem \cite{milgrom2002envelope}
-specialized to convex programs \cite{boyd2004convex}. Recent work differentiates
-through convex programs by implicitly differentiating the KKT/cone solution map
-\cite{amos2017optnet,agrawal2019differentiable}, including for bilevel problems
-\cite{gould2016differentiating}. As we stress in
-Section~\ref{sec:envelope}, for the \emph{value} (not the minimizer) this
-machinery is unnecessary---and the difference is quantitative. Implicit
-differentiation of the KKT/cone map solves an $m\times m$ linear system per design
-direction, with $m=O(r_x^2)$ for the covariance SDPs, i.e.\ $O(r_x^6)$ per
-directional derivative, and it differentiates the \emph{minimizer}, which ContEst
-never needs; the envelope route reads the already-computed dual and contracts at
-$O(r_x^2 r_\theta)$ for the \emph{whole} gradient (Section~\ref{sec:sim:complexity}).
+Recent work differentiates through convex control programs by implicitly differentiating the KKT system \cite{amos2017optnet,agrawal2019differentiable}. As we stress in
+Section~\ref{sec:envelope}, for the optimal value (not the optimal argument) this machinery is unnecessary. Implicit differentiation of the KKT system solves an $m\times m$ linear system per design
+direction, with $m=O(r_x^2)$ for the covariance SDPs ($r_x$ is the state-space dimension), i.e.\ $O(r_x^6)$ per
+directional derivative, and it differentiates the minimizer, which ContEst
+never needs. The envelope route reads the already-computed dual, therefore requires $O(r_x^2)$ for the whole gradient.
+
+\emph{Parametric LQ and Riccati-based design gradients.}
+For the linear--quadratic inner value, the design gradient we recover in
+Section~\ref{sec:lqg} is classical: the two-gramian formula dates to the
+constant-output-feedback problem of \cite{levine1970determination} and the
+parametric-LQ machinery of \cite{makila1987computational,rautert1997computational},
+and was later rediscovered in policy-gradient LQR analysis \cite{fazel2018global};
+on the estimation side \cite{belabbas2016geometric} differentiates the filter
+Riccati, now a generic AD primitive \cite{kao2020autodiff} exploited by
+adjoint-based co-design \cite{he2026efficient}. For a plain LQR inner problem these
+Riccati/adjoint routes are cheaper than the SDPs we use ($O(r_x^3)$ versus
+$O(r_x^6)$ per solve), and ContEst uses exactly that Riccati form there. Our
+contribution is thus not the LQ gradient in isolation but (i)~its \emph{unification},
+via the envelope theorem, across the control \emph{and} estimation halves and their
+$H_2$/$H_\infty$/eKF--MPC variants; and (ii)~retention of the SDP form where it buys
+modeling power the Riccati route cannot express---quadratic stability over a
+polytopic uncertainty set, gain-scheduling certificates, and structural/sparsity
+constraints. Moreover, exploiting structure (diagonal or masked covariances) makes
+the conic route itself competitive in cost (Section~\ref{sec:sim:complexity}).
 
 \emph{Positioning: closest work and what is new.}
-Three lines of work come closest, and ContEst departs from each in the same
-structural way. (i)~\emph{Sensor and estimator design}
-\cite{joshi2009sensor,tzoumas2016sensor,zhang2017sensor} places or
-selects sensors to sharpen a Kalman-filtering or observability criterion, but for
-a \emph{fixed} plant and controller: the actuation and the closed-loop control
-are not co-optimized with the sensing. (ii)~\emph{Plant--controller co-design}
-\cite{fathy2001coupling,herber2019nested,grigoriadis1998integrate} jointly tunes
-plant and controller, but treats sensing and estimation as given---full-state
-feedback or a fixed observer---so the output map never enters the design.
-(iii)~\emph{Dual and adaptive control}
-\cite{feldbaum1960dual,bar1974dual,mesbah2018stochastic} couples
-control with online estimation and probing, but for a \emph{fixed} physical and
-sensing design $\theta$: the distinction is \emph{offline hardware vs.\ online
-policy}---dual/adaptive MPC adapts the \emph{inputs} for a fixed design, whereas
-ContEst optimizes the \emph{design} against the (approximated) closed-loop
-information dynamics. The nearest single reference is LQG sensing co-design
-\cite{tzoumas2021lqg}, which co-selects sensors with an LQG controller through
-separation, but only in the linear/LQG regime and as a discrete menu selection;
-Section~\ref{sec:sim:pll} compares ContEst head-to-head against the
-separation-style sequential pipeline that such menu methods induce.
-
-Table~\ref{tab:positioning} makes these deltas auditable per capability.
+Table~\ref{tab:positioning} audits the nearest lines of work per capability. In
+brief: sensor/estimator design
+\cite{joshi2009sensor,tzoumas2016sensor,zhang2017sensor} selects sensors for a
+\emph{fixed} plant and controller; plant--controller co-design
+\cite{fathy2001coupling,herber2019nested,grigoriadis1998integrate} tunes plant and
+controller but takes sensing and estimation as given; and dual/adaptive control
+\cite{feldbaum1960dual,bar1974dual,mesbah2018stochastic} adapts the \emph{inputs}
+online for a \emph{fixed} design, whereas ContEst optimizes the offline design
+against the closed-loop information dynamics. The nearest single reference, LQG
+sensing co-design \cite{tzoumas2021lqg}, co-selects sensors with an LQG controller
+through separation, but only in the linear/LQG regime and as a discrete menu;
+Section~\ref{sec:sim:pll} compares ContEst head-to-head against that
+separation-style sequential pipeline.
 
 \begin{table*}[t]
 \centering
@@ -345,20 +281,11 @@ at once---plant, controller, \emph{and} estimator---inside a single stochastic
 estimation quality is \emph{optimized} rather than assumed. Its distinguishing
 ingredients are: actuation \emph{and} sensing/estimation parameters co-designed as
 \emph{continuous} variables in one problem (with discrete sensor allocation
-recovered by a sparse $\ell_1$ relaxation, Section~\ref{sec:sensor}); a nonlinear
+recovered by a sparse $\ell_1$ relaxation, Remark~\ref{rem:sensor}); a nonlinear
 extension via the eKF and certainty equivalence \cite{ramadan2024extended}; and
 design gradients obtained \emph{exactly} from the inner dual variables by the
 envelope theorem, without implicit differentiation of the solution map and
 without differentiating the KKT system (Section~\ref{sec:envelope}).
-
-\emph{Significance.} Since essentially every deployed system was designed
-sequentially, it sits at a feasible but generally non-stationary point of this
-joint problem; a single co-design pass can therefore improve it---often without
-altering the hardware menu, only how its continuous parameters are chosen. The
-studies of Section~\ref{sec:numerical} bear this out, with total-cost reductions
-of $6$--$43\%$ in which the sensing axis $\theta_h$---absent from control-only
-co-design---is a major, and sometimes dominant, contributor, up to and including
-the tuning of the estimator itself (a phase-locked loop, Section~\ref{sec:sim:pll}).
 
 %=======================================================================
 \section{Problem formulation}\label{sec:formulation}
@@ -367,36 +294,28 @@ the tuning of the estimator itself (a phase-locked loop, Section~\ref{sec:sim:pl
 Consider the parametrized stochastic system
 \begin{subequations}\label{eq:ss}
 \begin{align}
-x_{k+1} &= f(x_k, u_k, w_k;\, \theta), \label{eq:ss-state}\\
-y_k     &= h(x_k, v_k;\, \theta), \label{eq:ss-output}
+x_{k+1} &= f_\theta(x_k, u_k, w_k), \label{eq:ss-state}\\
+y_k     &= h_\theta(x_k, v_k), \label{eq:ss-output}
 \end{align}
 \end{subequations}
 with state $x_k \in \mathbb{R}^{r_x}$, input $u_k \in \mathbb{R}^{r_u}$, and
-output $y_k \in \mathbb{R}^{r_y}$. The maps $f, h$ are parametrized by
-$\theta \in \mathbb{R}^{r_\theta}$, representing plant parameters, actuator
-gains, and sensor tuning/placement. The disturbances $w_k, v_k$ are i.i.d.,
+output $y_k \in \mathbb{R}^{r_y}$. The maps $f_\theta, h_\theta$ are parametrized by $\theta \in \mathbb{R}^{r_\theta}$, representing plant parameters, actuator gains, and sensor tuning/placement. The state dynamics $f_\theta$ is locally bounded in its arguments for all $\theta$. The disturbances $w_k, v_k$ are i.i.d.,
 mutually independent and independent of $x_0 \sim p_0$ (the prior, before any
 measurement including $y_0$).
 
-The goal is to minimize design, control, and estimation costs together. The
-\emph{design cost} $J_{\mathrm{des}}(\theta)$ and design set $\theta \in \Theta$
-encode the price, manufacturability, or placement difficulty of a $\theta$. The
-\emph{control and estimation cost} is the stochastic optimal control value
+The goal is to jointly optimize design, control, and estimation altogether. The
+design cost $J_{\mathrm{des}}(\theta)$ and design set $\theta \in \Theta$
+encode the price, manufacturability, placement difficulty or some mechanical, thermal, structural,...etc considerations. The
+control and estimation costs are embedded in the stochastic optimal control problem
 \begin{equation}\label{eq:Jstoch}
 J_{\mathrm{stoch}}(p_0;\theta) = \min_{u_{0:N-1}} \frac{1}{N}\,
 \mathbb{E}\Big\{ \sum_{k=0}^{N} \ell(x_k,u_k) + \ell^N(x_N) \Big\},
 \end{equation}
-subject to constraints $u_k \in \mathbb{U}$, $x_k \in \mathbb{X}$, where
-the expectation is over $(x_0, w_{0:N-1}, v_{0:N})$ and $\ell, \ell^N$ are stage
-and terminal costs. In general
-$x_k \in \mathbb{X}$ is a chance constraint $\mathbf{P}(x_k\in\mathbb{X})\ge
-1-\delta$; in this paper we impose the input constraints and the mean-state
-constraints in their deterministic (nominal) form within the inner convex
-programs of Sections~\ref{sec:lqg}--\ref{sec:ekf} and the studies of
-Section~\ref{sec:numerical}, and defer a full probabilistic treatment---which
-enters the inner problem as a convex second-order-cone tightening of
-$\mathbb{X}$ and leaves the envelope machinery of Section~\ref{sec:envelope}
-intact---to future work (Section~\ref{sec:conclusion}).
+for finite-horizon problems, or for infinite-horizon as in 
+\begin{equation}\label{eq:Jstoch}
+J_{\mathrm{stoch}}(p_0;\theta) = \min_{\kappa} \lim_{N \to \infty} \mathbb{E} \Big\{ \ell(x_k,\kappa(x_k) + \ell^N(x_N) \Big\},
+\end{equation}
+with the appropriate cost identified from context. The above minimizations are possibly subject to state and input constraints. The expectation is over $(x_0, w_{0:N-1}, v_{0:N})$ and $\ell, \ell^N$ are stage and terminal costs.
 
 \begin{prob}[ContEst]\label{prob:bilevel}
 \begin{align*}
@@ -562,21 +481,33 @@ $\nabla_\theta V = \nabla_z L\,\partial_\theta z^\star
 = \partial_\theta L$ \cite{milgrom2002envelope,bonnans2000perturbation}.
 \end{proof}
 
-\begin{rem}[Degenerate case]\label{rem:degenerate}
-If (A3) fails, the dual solution set $\mathcal{D}^\star(\theta)$ is not a
-singleton and $V$ is in general only directionally differentiable, with
-$V'(\theta;d) = \min_{(\mu,S)\in\mathcal{D}^\star}
-\langle \nabla_\theta L(z^\star,\mu,S,\theta), d\rangle$
-\cite{bonnans2000perturbation}. The right-hand side of \eqref{eq:envelope}
-evaluated at \emph{any} returned dual is then a subgradient rather than the
-gradient, and the outer method of Section~\ref{sec:algorithm} degrades
-gracefully to a subgradient step. In our studies strict complementarity held at
-every solution (consistent with the gradient check of
-Section~\ref{sec:numerical}). By Proposition~\ref{prop:lqgreg}, in the
-LQG regime degeneracy can arise only where that proposition's hypotheses fail
-(e.g.\ a singular process noise $W$, or a loss of detectability at isolated
-$\theta$), which pinpoints in advance the design points that need the subgradient
-fallback.
+\begin{rem}[Regularizers, constraints, and the subgradient fallback]\label{rem:degenerate}
+The same machinery covers additional convex design ingredients. Any \emph{convex,
+conic-representable} regularizer or constraint whose data are $C^1$ in $\theta$ and
+that retains a strictly feasible point satisfies (A1) and (A4), and each contributes
+a single term $\langle\lambda_i^\star,\partial_\theta(\mathrm{data}_i)\rangle$ to
+\eqref{eq:envelope}. The binding requirements are (A2)--(A3): a \emph{unique
+minimizer} is secured by any \emph{strictly convex} regularizer (a small Tikhonov or
+$\log\det$ term), and a \emph{unique dual} by keeping the \emph{active} constraints
+nondegenerate (linearly independent supports, strict complementarity---automatic for
+inactive constraints) \cite{alizadeh1997complementarity,shapiro1997differentiability}.
+
+When (A3) nonetheless fails---a degenerate active face, a cap at its achievable
+floor, or the minimal-$\gamma$ optimum of Remark~\ref{rem:hinfreg}---the framework
+does not break. The value $V$ is then only directionally differentiable, with
+$V'(\theta;d)=\min_{(\mu,S)\in\mathcal{D}^\star}\langle\nabla_\theta
+L(z^\star,\mu,S,\theta),d\rangle$ \cite{bonnans2000perturbation}, and the dual the
+inner solver returns is a valid \emph{subgradient} of $V$ (a subgradient exists
+whenever (A1) holds, Appendix~\ref{app:subgrad}). It still supplies a descent
+direction, admits the stationarity certificate $0\in\partial V(\theta)$, and drives
+convergent projected/proximal methods---at a linear rather than superlinear
+rate---so the outer method of Remark~\ref{rem:algorithm} degrades gracefully to a
+subgradient step, exactly as nonsmooth $H_\infty$ synthesis relies on
+\cite{bonnans2000perturbation}. In our studies strict complementarity held at every
+solution (consistent with the gradient check of Section~\ref{sec:numerical}); by
+Proposition~\ref{prop:lqgreg}, in the LQG regime degeneracy can arise only where that
+proposition's hypotheses fail (singular $W$, or lost detectability at isolated
+$\theta$), pinpointing in advance the points that need the fallback.
 \end{rem}
 
 Three points give ContEst its practical edge. \emph{(1)~No implicit
@@ -684,10 +615,7 @@ of Theorem~\ref{prop:envelope}(3),
 where the model Jacobians $\partial A_\theta/\partial\theta_i$, etc., are cheap
 and exact. No sweep through the SDP solver is required.
 
-Rather than \emph{assume} the regularity of Assumption~\ref{as:env} for these
-SDPs, we can \emph{verify} it from the model data. The following makes the
-hypotheses checkable and, in doing so, identifies the LMI duals as classical
-Riccati objects.
+We now verify the regularity of Assumption~1 from the model data.
 
 \begin{proposition}[LQG regularity]\label{prop:lqgreg}
 Fix $\theta$ and suppose $(A_\theta,B_\theta)$ is stabilizable, $(A_\theta,
@@ -780,16 +708,6 @@ $\Sigma_w, \Sigma_v$ enter the filter map and hence
 $A_\theta^{\mathrm{info}}, B_\theta^{\mathrm{info}}$, so their gradients are
 delivered by the costate contraction~\eqref{eq:gradmpc} with no change.
 
-A caveat keeps the extension honest. Designing $W, V$ is unambiguous---they are
-physical noise levels priced by $J_{\mathrm{des}}$, and lowering them always helps
-the inner value, so the design cost is what makes the trade-off nontrivial.
-Designing $Q, R$ is meaningful only when the weights are genuinely negotiable
-knobs---an actuation-effort budget, or a specification the designer is free to
-retune---rather than a fixed performance specification; absent a competing term in
-$J_{\mathrm{des}}$, minimizing the closed-loop cost over its own weights is
-degenerate (e.g.\ $R\to0$). We therefore treat $Q,R$ as design variables only
-against an explicit $J_{\mathrm{des}}$ penalty or bound, exactly as for the other
-$\theta$ coordinates.
 
 \subsection{The robust analog: $H_\infty$ control and filtering SDPs}
 \label{sec:hinf}
@@ -925,8 +843,8 @@ form for numerics.
 
 \emph{Scalable game-Riccati route.} Exactly as the $H_2$ control SDP~\eqref{eq:Jcont}
 has an $O(r_x^3)$ Riccati twin ($J_{\mathrm{cont}}=\operatorname{tr}(PW)$ from the
-control DARE, used for the large-scale study of
-Section~\ref{sec:sim:mtdc}), the $H_\infty$ control SDP admits a Riccati twin that
+control DARE), and used for the robust study of
+Section~\ref{sec:sim:mtdc}, the $H_\infty$ control SDP admits a Riccati twin that
 avoids the interior-point solve entirely --- important because, at the
 \emph{minimal}-$\gamma$ optimum, the BRL LMI \eqref{eq:Hinf_cont} loses rank and its
 dual is numerically delicate. Fix the attenuation level $\gamma$ and pose the
@@ -982,27 +900,6 @@ The dual filter GARE is regular under the analogous conditions, giving
 $V_{\mathrm{est}}(\theta)\in C^1$.
 \end{proposition}
 
-This is the result the MTDC study of Section~\ref{sec:sim:mtdc} relies on: it
-works at a fixed $\gamma$, so the delicate minimal-$\gamma$ rank drop never enters.
-
-The \emph{filter} GARE is the exact dual, giving the estimation half of an
-output-feedback robust co-design. For the plant \eqref{eq:hinf_plant} with
-measurement $y_k=C_\theta x_k+D_v v_k$ and estimation-error output $\zeta=L_e x$
-($L_e=M^{1/2}$), the worst-case a-priori error covariance $\Sigma_e$ solves the
-control GARE \eqref{eq:gare} on the \emph{dual} data
-$(A_\theta^\top,\ [\,C_\theta^\top\ L_e^\top\,],\ W_\theta,\ \operatorname{diag}(V,-\gamma^2 I))$
---- measurement injection $C_\theta^\top$ and the estimated output $L_e^\top$
-playing the roles of $B_\theta$ and $E_\theta$ --- and the worst-case estimation
-cost is $V_{\mathrm{est}}(\theta)=\operatorname{tr}(M\Sigma_e)$, the robust twin of
-the Kalman value $\operatorname{tr}(M\Sigma^\varepsilon)$; its gradient is the dual
-of \eqref{eq:gare_grad} (contract $2\,\Sigma_e\tilde A_{\mathrm{cl}}\tilde S$ against
-$\partial A_\theta^\top/\partial\theta$, and the $C_\theta,V$ blocks of
-$2\,\Sigma_e\tilde A_{\mathrm{cl}}\tilde S\tilde K^\top$). This is the form used in
-Section~\ref{sec:sim:mtdc}: control value $\operatorname{tr}(XW)$ and estimation
-value $\operatorname{tr}(M\Sigma_e)$ with exact gradients at $O(r_x^3)$, no LMI solve
-and no rank-deficient dual. The fixed-$\theta$ separation into two Riccatis is,
-again, only an inner convenience: the shared $\theta$ moves $A_\theta$ and hence
-both halves.
 
 Two remarks connect this to the rest of the framework. First, the weight/noise
 co-design of Section~\ref{sec:weights} carries over unchanged: the disturbance
@@ -1013,7 +910,7 @@ $J_{\mathrm{des}}$. Second, the choice between the $H_2$/LQG and $H_\infty$ inne
 values is a modeling decision about the disturbance --- average-case stochastic
 versus worst-case $\ell_2$ --- that ContEst treats identically at the outer level:
 both expose an exact gradient from an inner dual, and the outer method of
-Section~\ref{sec:algorithm} is agnostic to which is used.
+Remark~\ref{rem:algorithm} is agnostic to which is used.
 
 %=======================================================================
 \section{The locally linearized case: MPC and the eKF}\label{sec:ekf}
@@ -1160,83 +1057,39 @@ nonlinear (Sec.~\ref{sec:ekf}) & convex prog.~\eqref{eq:mpc} & surrogate $\wideh
 \end{table}
 
 %=======================================================================
-\section{Sensor allocation: discrete selection and sparse relaxation}
-\label{sec:sensor}
-%=======================================================================
-
-A recurring design decision is \emph{which} sensors to deploy. With $r_y$
-candidate sensors, binary indicators $b_j\in\{0,1\}$ (sensor $j$ contributing its
-row $C_j$ and noise variance $\sigma_{v,j}^2$ when $b_j=1$) and per-sensor costs
-$c_j$ make the co-design $\min_{\theta,b\in\{0,1\}^{r_y}}
-J_{\mathrm{stoch}}(\theta,b)+c^\top b$ a mixed-integer (SDP) program, whose exact
-solution is combinatorial (NP-hard, $2^{r_y}$ subsets)
-\cite{joshi2009sensor,tzoumas2016sensor}. Standard tractable remedies---greedy
-selection with submodularity guarantees \cite{tzoumas2016sensor,zhang2017sensor},
-the convex Boolean relaxation $b_j\in[0,1]$ \cite{joshi2009sensor}, and
-sparsity-promoting $\ell_1$ \cite{dhingra2014admm,saraf2017h2,das2017sparse}---are
-all compatible with ContEst; we adopt the $\ell_1$ route, which fits it with no
-change to the gradient machinery.
-
-Replace the indicators by continuous gains $\alpha_j\ge0$ scaling each sensor's
-contribution, $C(\alpha)=\operatorname{diag}(\alpha)\,C_{\mathrm{base}}$
-($\alpha_j=0$ removing sensor $j$), so $\alpha$ joins $\theta$ through $C_\theta$,
-and put the sparsity penalty in the \emph{design cost},
+\begin{rem}[Sensor allocation]\label{rem:sensor}
+Deciding \emph{which} of $r_y$ candidate sensors to deploy fits ContEst without
+disturbing its gradients. (a)~Adding binary indicators $b\in\{0,1\}^{r_y}$ and
+costs $c$ to the \emph{upper} level, $\min_{\theta,b}
+J_{\mathrm{stoch}}(\theta,b)+c^\top b$, leaves the inner problem---and hence the
+envelope gradients \eqref{eq:chain}, \eqref{eq:gradmpc}---unchanged; the price is a
+(NP-hard) mixed-integer program \cite{joshi2009sensor,tzoumas2016sensor}.
+(b)~Relaxing $b$ to continuous gains $\alpha\ge0$ ($C(\alpha)=\operatorname{diag}(\alpha)\,C_{\mathrm{base}}$) with an $\ell_1$ penalty in the design cost,
 \begin{equation}\label{eq:Jdes}
 J_{\mathrm{des}}(\theta) = J_{\mathrm{hw}}(\theta) + \lambda_s \| \alpha \|_1,
 \qquad \alpha \ge 0,
 \end{equation}
-with $J_{\mathrm{hw}}$ the smooth design penalties and $\lambda_s>0$ trading
-estimation quality against the number of active sensors. Because the $\ell_1$ term
-sits in $J_{\mathrm{des}}$ and not the inner problem, the envelope gradients
-\eqref{eq:chain}, \eqref{eq:gradmpc} are untouched. Its one kink is removed by the
-standard epigraph lift \cite{boyd2004convex}: substitute
-$\lambda_s\|\alpha\|_1\mapsto\lambda_s\mathbf 1^\top t$ and append
-$\alpha\preceq t$ ($\alpha\ge0$), which is smooth (linear in the slacks $t$) over a
-polyhedron, so the BFGS of Section~\ref{sec:algorithm} keeps its convergence
-guarantees; equivalently one takes a proximal (soft-threshold) step on
-$\lambda_s\|\alpha\|_1$. When a binary deployment is required, the converged
-$\alpha^\star$ is thresholded (optionally with a fixed-sensor re-solve, or
-reweighted-$\ell_1$ iterations \cite{candes2008reweighted}). ContEst thus treats
-sensor allocation and continuous sensor tuning uniformly; the MTDC study of
-Section~\ref{sec:sim:mtdc} exercises this allocation on the robust $H_\infty$ path,
-pruning $60\%$ of the DC-voltage sensors at no estimation cost.
+promotes sparse sensing \cite{dhingra2014admm,saraf2017h2,das2017sparse}. (c)~The $\ell_1$ kink is removed
+by its epigraph lift \cite{boyd2004convex}, $\lambda_s\mathbf 1^\top t$ with
+$\alpha\preceq t$, keeping $J$ differentiable so the BFGS guarantees of
+Remark~\ref{rem:algorithm} hold; a threshold on $\alpha^\star$ recovers a binary
+deployment. The MTDC study (Section~\ref{sec:sim:mtdc}) uses this to prune to $4$
+of $15$ sensors under per-converter estimation caps.
+\end{rem}
 
-%=======================================================================
-\section{Outer optimization}\label{sec:algorithm}
-%=======================================================================
-
-Problem~\ref{prob:bilevel} is solved by a projected quasi-Newton method on
-$\theta$ over the box $\Theta = [\theta_{\mathrm{lb}},\theta_{\mathrm{ub}}]$. Each
-outer iteration: (1)~solves the inner convex problem
-(\eqref{eq:Jcont}/\eqref{eq:Jest} or \eqref{eq:mpc})---one solve, or one per
-scenario when several are averaged (Remark~\ref{rem:scenarios});
-(2)~reads off its duals ($S$ or $\lambda$); (3)~assembles the design
-gradient via \eqref{eq:chain} or \eqref{eq:gradmpc}; (4)~adds
-$\nabla J_{\mathrm{des}}$, including the $\ell_1$ subgradient of
-\eqref{eq:Jdes}; and (5)~takes a quasi-Newton (BFGS) step with projection
-onto $\Theta$. Because the gradients are exact---neither finite-difference nor
-approximate implicit derivatives---the curvature (secant) pairs driving the
-BFGS update are accurate, so, under the usual smoothness and (local)
-strong-convexity assumptions, the outer iteration attains the well-known local
-\emph{superlinear} convergence rate of full BFGS \cite{nocedal2006numerical}. The
-design dimension $r_\theta$ is small (at most a handful of parameters per study),
-so we use full BFGS rather than its limited-memory variant \cite{liu1989limited}:
-the dense inverse-Hessian approximation costs nothing to store at this scale and
-retains the full curvature history, whereas L-BFGS would only trade that away for a
-weaker (R-linear) rate that buys nothing here. The dominant per-iteration cost is
-the inner convex solves, which scale polynomially.
-
-\emph{Stationarity.} When the objective is smooth---the LQG and fixed-$\gamma$
-$H_\infty$ regimes, where Propositions~\ref{prop:lqgreg} and~\ref{prop:hinfreg}
-make $J\in C^1$, and the nonlinear surrogate~\eqref{eq:mpc} likewise---and the
-projection is onto the box $\Theta$, standard globalization applies: with an
-Armijo/Wolfe line search and scaling matrices whose eigenvalues stay uniformly
-bounded and bounded away from zero, every accumulation point of the projected
-(quasi-Newton) iterates is a stationary point of $J$ over $\Theta$
-\cite{beck2017first,birgin2000nonmonotone}. The one nonsmooth term, the sparsity
-penalty $\lambda_s\|\alpha\|_1$ of \eqref{eq:Jdes}, is handled without forfeiting
-this guarantee by the epigraph lift of Section~\ref{sec:sensor} (equivalently, a
-proximal-gradient step on the composite objective \cite{beck2017first}).
+\begin{rem}[Outer optimization]\label{rem:algorithm}
+Since the design gradient is available (Section~\ref{sec:envelope}),
+Problem~\ref{prob:bilevel} is solved by a first-order method---here a projected
+BFGS iteration on $\theta$ over the box $\Theta$. Because the gradients are
+\emph{exact} (not finite-difference or approximate implicit derivatives), the
+secant pairs driving the BFGS update are accurate, so under the usual smoothness
+and local strong-convexity assumptions the outer iteration attains the local
+\emph{superlinear} rate of full BFGS \cite{nocedal2006numerical}; with an
+Armijo/Wolfe line search every accumulation point is a stationary point of $J$
+over $\Theta$ \cite{beck2017first,birgin2000nonmonotone}. The lone nonsmooth term,
+the $\ell_1$ penalty \eqref{eq:Jdes}, retains this guarantee via the epigraph lift
+of Remark~\ref{rem:sensor}.
+\end{rem}
 
 %=======================================================================
 \section{Simulation studies}\label{sec:numerical}
@@ -1246,16 +1099,17 @@ We evaluate ContEst on three nonlinear co-design problems spanning very differen
 physics: spacecraft attitude determination and control (Section~\ref{sec:sim:adcs}), a
 binary distillation column (Section~\ref{sec:sim:distill}), and PLL/DSE estimator
 tuning in a low-inertia grid (Section~\ref{sec:sim:pll}), followed by a
-\emph{large-scale, linear} power-system study on the steady-state \emph{robust}
-($H_\infty$) inner problem (multi-terminal HVDC droop coordination,
-Section~\ref{sec:sim:mtdc}) and a complexity analysis of the two inner
+\emph{linear, robust} power-system study on the steady-state \emph{worst-case}
+($H_\infty$) control inner problem (multi-terminal HVDC droop coordination with
+sparse, estimation-capped sensor allocation, Section~\ref{sec:sim:mtdc}) and a
+complexity analysis of the two inner
 problems under interior-point solvers (Section~\ref{sec:sim:complexity}). Each of
 these three is genuinely nonlinear, so all
 use the eKF--MPC second stage of Section~\ref{sec:ekf}: the convex program
 \eqref{eq:mpc} is solved with the Clarabel interior-point solver, and the design
 gradient is assembled from the dynamics costates through \eqref{eq:gradmpc}.
 The outer loop is the projected quasi-Newton method of
-Section~\ref{sec:algorithm} (BFGS) over the box $\Theta$, run from $5$ initial
+Remark~\ref{rem:algorithm} (BFGS) over the box $\Theta$, run from $5$ initial
 points---the baseline design $\theta_{\mathrm{nom}}$ plus four uniform random
 restarts in $\Theta$---keeping the best minimizer. For the ADCS and PLL
 studies all five starts \emph{converge to the same minimizer}, which we report as
@@ -1476,25 +1330,19 @@ temperature sensors out of the bottoms region across the steep mid-and-upper tra
 ($s:(2.0,3.5,5.0)\to(3.0,5.4,8.0)$), covering the composition profile rather than
 clustering low (Table~\ref{tab:distill}). This cuts the estimation cost
 $J_{\mathrm{est}}$ by $22.8\%$ ($12.8\to9.9$) and the control cost
-$J_{\mathrm{det}}$ by $1.9\%$, for a $10.2\%$ reduction in $J_c$ and---after the
-small placement penalty---a $6.5\%$ reduction in the total $J_{\mathrm{tot}}$
-($32.3\to30.2$).
+$J_{\mathrm{det}}$ by $1.9\%$ ($19.5\to19.1$), for a $10.2\%$ reduction in $J_c$
+($32.3\to29.0$) and---after the small placement penalty---a $6.5\%$ reduction in the
+total $J_{\mathrm{tot}}$ ($32.3\to30.2$).
 
 \emph{Comments.} This study stresses ContEst on the \emph{placement} form of the
 sensing axis---three movable inferential sensors and three feed streams---on a
-nonconvex, multimodal objective. Both physical effects that make distillation
-layout hard---the interior-optimal feed distribution and the interior-optimal
-sensor trays---are recovered jointly by the same envelope gradient, and the gain is
-estimation-led ($J_{\mathrm{est}}$ down $22.8\%$ against a nearly flat
-$J_{\mathrm{det}}$), reflecting that with temperature the only measurement the
-reconstruction quality dominates the achievable regulation. It also illustrates why
-co-design matters even without a hard sensor budget: a control-only design would
-inherit the naive low sensor trays and forfeit the estimation-cost reduction, while
-the baseline start alone would stall at a local minimum. A discrete
-sensor-selection method cannot represent this design either, because the feed and
-sensor trays are \emph{continuous} locations whose interior optima fall between
-integer stages---the coupling of $\bar f$ and $\bar h$ through the column physics is
-invisible to menu enumeration.
+nonconvex, multimodal objective. Both interior-optimal effects (the feed
+distribution and the sensor trays) are recovered jointly by the same envelope
+gradient, and the gain is estimation-led ($J_{\mathrm{est}}$ down $22.8\%$ against a
+nearly flat $J_{\mathrm{det}}$), reflecting that with temperature the only
+measurement, reconstruction quality dominates achievable regulation. Because the
+feed and sensor trays are \emph{continuous} locations with interior optima between
+integer stages, discrete menu enumeration cannot represent this design.
 
 \begin{table}[t]
 \centering
@@ -1609,13 +1457,11 @@ the total $J_{\mathrm{tot}}$ ($178.5\to116.4$).
 a first-class design variable in ContEst. The tuned quantity is neither a sensor
 location nor a static gate but the bandwidth of a \emph{dynamic} estimator
 embedded in every inverter, and it acts on the objective through the measurement
-covariance $V(\theta)$---a channel absent from every prior study and from
-control-only co-design. That the optimal bandwidths sit strictly inside the box is
+covariance $V(\theta)$. That the optimal bandwidths sit strictly inside the box is
 the signature of the bias--variance trade-off the framework now resolves
 automatically, allocating the most estimator bandwidth exactly where the dynamics
-are fastest and least certain. No sensor-placement method can tune this variable,
-because it tunes an estimator \emph{state} in $\bar f$ and the noise level
-$V(\theta)$ rather than \emph{which} sensor to read.
+are fastest and least certain---a variable that tunes an estimator \emph{state} in
+$\bar f$ and the noise level $V(\theta)$, not \emph{which} sensor to read.
 
 \emph{Beyond the naive baseline: a competent sequential pipeline.} A practitioner
 would not use the uniform baseline but a \emph{sequential} pipeline---tuning the
@@ -1664,151 +1510,158 @@ $b_3$ & $h,V$ (PLL bandwidth)  & 6.000 & 10.575 \\
 \end{table}
 
 %-----------------------------------------------------------------------
-\subsection{Multi-terminal HVDC droop coordination}
+\subsection{Multi-terminal HVDC: robust droop co-design with capped sparse sensing}
 \label{sec:sim:mtdc}
 %-----------------------------------------------------------------------
 
 The three studies above are nonlinear and use the eKF--MPC inner problem. We close
-with a \emph{large-scale, linear} power-system study, and use it to exercise the
-\emph{robust output-feedback} ($H_\infty$) inner problem of Section~\ref{sec:hinf} in
-place of the $H_2$/LQG one. The device--network model is linearized about an
-operating point and discretized by an explicit Euler step,
+with a \emph{linear, robust} power-system study that combines both design axes on a
+single robust inner value: the \emph{worst-case ($H_\infty$)} control problem of
+Section~\ref{sec:hinf} for the droop, and the estimation SDP of
+Section~\ref{sec:lqg} with the sparse sensor-allocation relaxation of
+Remark~\ref{rem:sensor} for the sensing. The device--network model is linearized
+about an operating point and discretized by an explicit Euler step,
 \begin{equation}\label{eq:lin-ss}
 \begin{aligned}
 x_{k+1}&=A(\theta)\,x_k+B\,u_k+E\,w_k,\qquad
-y_k=C\,x_k+D_v v_k,\\
+y_k=C(\alpha)\,x_k+D_v v_k,\\
 z_k&=[\,Q^{1/2}x_k;\,R^{1/2}u_k\,],
 \end{aligned}
 \end{equation}
 with $A=I+\Delta t\,A_c$, $B=\Delta t\,B_c$, disturbance channel $E=W^{1/2}$
-(renewable infeed), and a measurement $y$ that telemeters only the \emph{DC-bus
-voltages} ($C$ selects the $\Delta V_i$ states, $r_y=25$, noise
-$D_vD_v^\top=V=10^{-3}I$)---the converter \emph{currents} are unmeasured and must be
-estimated. This is therefore a genuine output-feedback co-design. Fixing the
-attenuation level $\gamma^2=8$, the inner value splits, as in the LQG separation,
-into a worst-case control and a worst-case estimation cost,
-\begin{equation}\label{eq:mtdc-Jc}
-J_c(\theta)=\underbrace{\operatorname{tr}(XW)}_{J_{\mathrm{det}}(\theta)}
-          +\underbrace{\operatorname{tr}(M\Sigma_e)}_{J_{\mathrm{est}}(\theta)},
-\end{equation}
-with $X$ from the control game Riccati~\eqref{eq:gare} and $\Sigma_e$ from its dual
-filter GARE (estimation-error weight $M=Q$); the design gradient is the sum of the
-two closed-form contractions~\eqref{eq:gare_grad} and its dual, chained with the
-Jacobian of $A(\theta)$---no differentiation through the solver. Although the
-fixed-$\theta$ game separates into two Riccatis, the droop $\theta$ enters $A(\theta)$
-and hence moves \emph{both} $X$ and $\Sigma_e$, so $J_{\mathrm{det}}$ and
-$J_{\mathrm{est}}$ vary over a common $\theta$ and the co-design does not separate.
-We take the $O(r_x^3)$ game-Riccati route (Section~\ref{sec:hinf}); the SDP form
-\eqref{eq:Hinf_cont}--\eqref{eq:Hinf_est} is avoided because, at the interior
-$\gamma$ optimum it minimizes over, its LMIs are rank-deficient and their duals
-ill-conditioned (Section~\ref{sec:sim:complexity}). The outer BFGS loop of
-Section~\ref{sec:algorithm} runs from $5$ starts ($\theta_{\mathrm{nom}}$ plus four
-random restarts). The design gradient here sums the control and the \emph{dual
-filter} envelope contractions.
+(renewable infeed), and a measurement that telemeters only the \emph{DC-bus
+voltages} ($C$ selects the $\Delta V_i$ states, $r_y=15$, per-sensor noise
+$v=10^{-3}$)---the converter \emph{currents} are unmeasured and must be estimated,
+so this is a genuine output-feedback co-design.
 
-\emph{Significance --- why $H_\infty$ fits here.} The failure mode of a droop grid
-is a \emph{resonant peak}: the converter lag makes excessive droop provoke a
+\emph{Two coupled inner values.} The control side is priced by the worst-case
+$H_\infty$ game at fixed attenuation $\gamma^2=8$: its value is
+$J_{\mathrm{det}}(\theta)=\operatorname{tr}(XW)$ with $X$ the stabilizing solution of
+the game Riccati~\eqref{eq:gare} and the closed-form envelope
+gradient~\eqref{eq:gare_grad}. The sensing side is priced by the information-form
+estimation SDP: writing the stationary predicted covariance
+$\Sigma_{\mathrm{pred}}(\theta)=\operatorname{dlyap}(A(\theta),W)$ as the estimation
+prior and giving each voltage sensor a gain $\alpha_i\in[0,1]$ that enters the
+measurement information linearly, the (Q-weighted) posterior error-covariance solves
+the convex program
+\begin{align}\label{eq:mtdc-sens}
+J_{\mathrm{est}}(\theta,\alpha)=\!\!\min_{X\succeq0,\,0\le\alpha\le1}\
+\operatorname{tr}(QX)+\lambda_s\mathbf 1^\top\!\alpha \\
+\text{s.t.}
+\begin{bmatrix}\Sigma_{\mathrm{pred}}(\theta)^{-1}+\sum_i \alpha_i\frac{C_i^\top C_i}{v} & I\\[2pt] I & X\end{bmatrix}\!\succeq0,\ \ [X]_{2i,2i}\le\bar\sigma_i^2,
+\end{align}
+i.e.\ $X\succeq(\Sigma_{\mathrm{pred}}^{-1}+\sum_i\alpha_i C_i^\top C_i/v)^{-1}$ with
+an $\ell_1$ sparsity penalty on the sensor set and \emph{per-converter-current}
+estimation-error caps $[X]_{2i,2i}\le\bar\sigma_i^2$. These caps and the discrete
+selection make the estimation half genuinely SDP-only: no algebraic Riccati
+expresses per-state covariance bounds with an unknown active set
+(Section~\ref{sec:sim:complexity}), and the cap multipliers are shadow prices that
+localize the essential sensors. Because the droop enters $A(\theta)$ it reshapes
+\emph{both} $X$ (through the game Riccati) and $\Sigma_{\mathrm{pred}}(\theta)$ (the
+estimation prior), so $J_{\mathrm{det}}$ and $J_{\mathrm{est}}$ vary over a common
+$\theta$ and the co-design does not separate. We solve the $H_\infty$ control side
+by the $O(r_x^3)$ game Riccati and the sensing side as a small conic program
+(interior-point); both design gradients come from the inner duals by the envelope
+theorem, with the droop optimized by the projected method of
+Remark~\ref{rem:algorithm}.
+
+\emph{Significance --- why $H_\infty$ for the droop.} The failure mode of a droop
+grid is a \emph{resonant peak}: converter lag makes excessive droop provoke a
 lightly damped inter-terminal DC-voltage oscillation, and a renewable-infeed step
-that lands near that resonance is amplified far beyond its RMS level. It is this
-worst-case amplification, not the noise-averaged variance, that a secure design
-must bound---exactly the quantity $H_\infty$ prices, while $H_2$ averages it away.
-Both halves inherit the resonance: a near-oscillatory plant is both harder to
-regulate and harder to \emph{estimate} under a worst-case disturbance, so
-$J_{\mathrm{det}}$ and $J_{\mathrm{est}}$ are each sharply $U$-shaped in the droop.
-A naive design chasing tight regulation over-provisions droop and lands on that
-wall---the baseline here---so ContEst must \emph{lower} the gains to their interior
-robust optimum.
+landing near that resonance is amplified far beyond its RMS level. It is this
+worst-case amplification, not the noise-averaged variance, that a secure design must
+bound---exactly what $H_\infty$ prices, while $H_2$ averages it away---so
+$J_{\mathrm{det}}$ is sharply $U$-shaped in the droop and a naive tight-regulation
+design over-provisions onto the resonance wall (the baseline).
 
-\emph{State-space model.} $n_t=25$ terminals on a meshed DC grid ($r_x=50$), each
+\emph{State-space model.} $n_t=15$ terminals on a meshed DC ring ($r_x=30$), each
 with state $[\Delta V_i,\Delta I_i]$ and, for $\Delta t=\SI{5}{ms}$,
 \begin{subequations}\label{eq:mtdc}
 \begin{align}
 C_i\,\Delta\dot V_i &= -\!\!\sum_{j\sim i}\!G_{ij}(\Delta V_i-\Delta V_j)+\Delta I_i+\text{infeed},\\
 \tau_i\,\Delta\dot I_i &= -\Delta I_i-(k_0\,\theta_i)\,\Delta V_i+u_i,\\
-y_{k,i} &= \Delta V_i + v_{k,i},\qquad v_k\sim\mathcal N(0,10^{-3}I_{25}),
+y_{k,i} &= \alpha_i\,\Delta V_i + v_{k,i},\qquad v_k\sim\mathcal N(0,10^{-3}I_{15}),
 \end{align}
 \end{subequations}
-so the droop gain $k_0\theta_i$ ($k_0=12$) enters $A$ through the
-converter-current feedback with lag $\tau_i$. A heterogeneous renewable-infeed
-disturbance ($\sigma_{\mathrm{inf}}$ per node) drives the DC nodes; $Q$ penalizes
-$\Delta V$, $R=2I$, estimation-error weight $M=Q$; small converter-stress cost
-$J_{\mathrm{des}}=c_k\sum_i\theta_i$, $c_k=5\!\times\!10^{-3}$; box
-$\theta\in[0.5,4]^{25}$ and naive over-provisioned baseline
-$\theta_{\mathrm{nom}}=3$. At this leverage the interior robust optimum is near
-$\theta\!\approx\!1$ with $J_c(\theta{=}3)\!\approx\!1.7\,J_c(\theta{=}1)$; only
-the DC-bus voltages $\Delta V_i$ are measured, so the converter currents must be
-estimated.
+so the droop gain $k_0\theta_i$ ($k_0=12$) enters $A$ through the converter-current
+feedback with lag $\tau_i$, and the sensor gains $\alpha_i$ enter $C$. A
+heterogeneous renewable-infeed disturbance ($\sigma_{\mathrm{inf},i}$ per node)
+drives the DC nodes; $Q$ penalizes $\Delta V$ (and weights the estimation error),
+$R=2I$; small converter-stress cost $J_{\mathrm{des}}=c_k\sum_i\theta_i$,
+$c_k=5\!\times\!10^{-3}$; box $\theta\in[0.5,4]^{15}$ and naive over-provisioned
+baseline $\theta_{\mathrm{nom}}=3$.
 
-\emph{Results.} All five
-starts agree, giving strong empirical evidence (not a certificate) that the reported
-optimum is global over $\Theta$. Consistent with the $U$-shaped
-$J_c$, ContEst \emph{lowers} the over-provisioned droop to an interior,
-disturbance-dependent profile ($\theta\in[0.66,0.92]$, none at a bound; noisier
-terminals keep slightly higher droop), pulling the terminals off the resonance
-wall. Both halves improve: the worst-case estimation cost $J_{\mathrm{est}}$ falls
-$42.6\%$ ($1.08\to0.62$) and the worst-case control cost $J_{\mathrm{det}}$ falls
-$39.7\%$ ($2.78\to1.68$), for a $40.5\%$ reduction in $J_c$ ($3.86\to2.30$) and,
-with the reduced converter stress, a $43.4\%$ reduction in $J_{\mathrm{tot}}$
-($4.24\to2.40$). The single control-side design variable improves the estimation
-half purely by reshaping the shared dynamics $A(\theta)$---the design-level coupling
-that a place-then-control pipeline cannot exploit.
+\emph{(A) Droop co-design (all $15$ sensors).} From the baseline
+($J_{\mathrm{det}}=1.65$, $J_{\mathrm{est}}=1.22$), ContEst lowers the droop to an
+interior, disturbance-dependent profile $\theta^\star\in[0.73,0.81]$ (none at a
+bound), cutting the worst-case control cost $J_{\mathrm{det}}$ by $38.2\%$
+($\to1.02$) and the estimation cost $J_{\mathrm{est}}$ by $60.8\%$ ($\to0.48$), a
+$47.8\%$ reduction in $J_c$ ($2.87\to1.50$). The single control-side axis improves
+the estimation half purely by reshaping the shared dynamics $A(\theta)$---the
+design-level coupling a place-then-control pipeline cannot exploit.
 
-\emph{Adding a sparse sensing axis ($\ell_1$ allocation).} The study above
-telemeters \emph{all} $25$ DC-bus voltages. But the meshed ring couples
-neighbouring bus voltages, so an un-sensed terminal can be reconstructed by the
-$H_\infty$ filter from its neighbours---\emph{which} voltages to telemeter is
-itself a design decision, and the natural vehicle for it is the discrete
-sensor-allocation relaxation of Section~\ref{sec:sensor}, which the studies so far
-have described but not exercised. We give each measurement row a gain
-$\alpha_i\ge0$, $C(\alpha)=\operatorname{diag}(\alpha)\,C$ (so $\alpha_i=0$ removes
-sensor $i$ and larger $\alpha_i$ raises its SNR at fixed channel noise), append
-$\alpha$ to the design, and add the sparsity penalty $\lambda_s\lVert\alpha\rVert_1$
-to $J_{\mathrm{des}}$ \eqref{eq:Jdes}. Since $\alpha\ge0$ the epigraph lift of
-Section~\ref{sec:sensor} collapses to the smooth linear term
-$\lambda_s\mathbf 1^\top\alpha$, and $\alpha$ enters only $C$, whose envelope
-gradient \eqref{eq:gradHinf_est} is already in hand---so no machinery changes. This
-promotes MTDC to a genuine two-axis co-design: the control droop $\theta_f=k$ (in
-$A$) \emph{and} the sensing gains $\theta_h=\alpha$ (in $C$), optimised jointly on
-the same robust inner value.
+\emph{(B) Sparse sensing ($\ell_1$).} Sweeping $\lambda_s$ at the co-designed droop
+(Table~\ref{tab:mtdc-alloc}a) prunes the telemetry \emph{gracefully}: the ring
+coupling lets the estimator reconstruct un-sensed terminals from their neighbours,
+so $8$ of $15$ sensors already hold $J_{\mathrm{est}}$ within $16\%$ of full
+telemetry.
 
-Sweeping $\lambda_s$ traces a sparsity/performance frontier
-(Table~\ref{tab:mtdc-alloc}). Across the co-designed rows the control cost
-$J_{\mathrm{det}}$ holds at its robust optimum (${\approx}1.67$), so the frontier
-isolates the price of sparsity: the worst-case estimation cost degrades
-\emph{gracefully} as sensors are pruned, because the network coupling makes most
-voltage telemetry redundant---$12$ sensors already leave $J_{\mathrm{est}}$ at the
-$25$-sensor \emph{naive}-baseline level, and even $6$ sensors cost only ${\sim}17\%$.
-At $\lambda_s=0.06$ the joint co-design keeps $10$ of $25$ sensors; because the
-sensor on/off combinatorics make the landscape multimodal (unlike the droop-only
-study), we run the multi-start of Section~\ref{sec:algorithm} and report the best of
-five. Thresholding that solution to its $10$-sensor integer menu and re-solving the
-droop gives $J_{\mathrm{est}}=0.72$ and $J_{\mathrm{det}}=1.67$---$J_c$ down $38.2\%$
-against the full-telemetry baseline while \emph{removing $60\%$ of the voltage
-sensors}, with estimation in fact \emph{better} than with all $25$ (the pruned
-sensors' budget is spent on the survivors). This is the discrete allocation of
-Section~\ref{sec:sensor} in action on the robust path: one envelope gradient tunes
-the droop and prunes the sensor set at once, a coupling neither a control-only
-co-design (no sensing axis) nor a fixed-sensing pipeline (no shared-dynamics
-reshaping) can represent.
+\emph{(C) Estimation-quality caps.} Imposing a per-converter-current variance spec
+$[\Sigma]_{2i,2i}\le\mathrm{tol}$ (Table~\ref{tab:mtdc-alloc}b) makes the allocation
+\emph{bind}: as the cap tightens the SDP is forced to \emph{add sensors back}
+($3\!\to\!4\!\to\!5$), and its cap duals localize the estimation bottleneck
+(terminal $11$, shadow price rising $0.6\to12.1$); below the all-on covariance floor
+($6.3\times10^{-2}$) the spec is infeasible for \emph{any} allocation---an
+irreducible estimation floor set by the infeed noise. None of these---discrete
+selection, per-state covariance caps, shadow prices---is expressible by an algebraic
+Riccati; they are exactly the modelling flexibility the SDP form buys
+(Section~\ref{sec:sim:complexity}).
+
+\emph{(D) Merged optimum.} At a mid-band spec the SDP keeps $4$ of $15$ sensors,
+$\{4,7,11,12\}$; re-optimizing the droop on that menu gives $J_{\mathrm{det}}=1.01$,
+$J_{\mathrm{est}}=0.69$, $J_c=1.70$---a $40.9\%$ reduction against the
+full-telemetry baseline while \emph{removing $73\%$ of the voltage sensors}. One
+envelope pass tunes the droop and allocates the sensors under a hard estimation spec.
+
+The novelty here is \emph{not} the sensor selection itself: fixed-plant sensor
+selection is a mature area, from greedy/submodular
+\cite{tzoumas2016sensor,zhang2017sensor} and convex relaxation
+\cite{joshi2009sensor} to mixed-integer methods that solve it to \emph{global}
+optimality at these scales \cite{dutta2023unified}. What none of these represents
+is that here the control-side droop $\theta_f$ \emph{reshapes} the estimation
+problem---it moves the predicted covariance $\Sigma_{\mathrm{pred}}(\theta)$ that
+the allocation is posed against---so ContEst co-designs the plant parameter and the
+sensor set together from a single envelope gradient, whereas every fixed-plant
+selector (Riccati, greedy, or global MISDP) optimizes the sensors over a frozen
+$\Sigma_{\mathrm{pred}}$. It is the shared-dynamics coupling, not the allocation,
+that is beyond their reach.
 
 \begin{table}[t]
 \centering
-\caption{MTDC sparse voltage-sensor allocation: the $\ell_1$ sparsity/performance
-frontier (single-start sweep of $\lambda_s$, joint droop$+$sensing co-design).
-Across the co-designed rows $J_{\mathrm{det}}$ holds at its robust optimum, so the
-rising $J_{\mathrm{est}}$ isolates the price of removing sensors; the naive
-baseline telemeters all $25$ at unit gain with over-provisioned droop $k=3$.}
+\caption{MTDC ($r_x=30$) sparse sensing at the co-designed droop $\theta^\star$
+(control cost held at its robust optimum $J_{\mathrm{det}}\!\approx\!1.02$).
+\emph{(a)} $\ell_1$ frontier (no cap): estimation degrades gracefully as sensors are
+pruned. \emph{(b)} per-converter-current caps $[\Sigma]_{2i,2i}\le\mathrm{tol}$ force
+sensors back and expose the cap shadow price $\lambda_i$ (binding terminal in
+brackets); below the all-on floor $6.3\times10^{-2}$ the spec is infeasible.}
 \label{tab:mtdc-alloc}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \hline
-$\lambda_s$ & sensors & $J_{\mathrm{est}}$ & $J_{\mathrm{det}}$ & $J_c$ \\
+\multicolumn{4}{l}{\emph{(a) $\ell_1$ frontier (no cap)}}\\
+$\lambda_s$ & sensors & $J_{\mathrm{est}}$ & max curr.\ var \\
 \hline
-baseline & 25 & 1.08 & 2.78 & 3.86 \\
-0.00     & 25 & 0.35 & 1.67 & 2.02 \\
-0.03     & 15 & 0.80 & 1.67 & 2.47 \\
-0.06     & 12 & 1.01 & 1.67 & 2.68 \\
-0.10     &  6 & 1.27 & 1.67 & 2.94 \\
-0.20     &  2 & 1.53 & 1.66 & 3.20 \\
+0.00 & 15 & 0.480 & $6.32\times10^{-2}$ \\
+0.01 & 12 & 0.491 & $6.33\times10^{-2}$ \\
+0.02 &  8 & 0.558 & $6.59\times10^{-2}$ \\
+0.04 &  3 & 0.739 & $7.93\times10^{-2}$ \\
+\hline
+\multicolumn{4}{l}{\emph{(b) capped ($\lambda_s=0.04$): tol on current est.\ var}}\\
+tol & sensors & $J_{\mathrm{est}}$ & binding ($\lambda_i$)\\
+\hline
+$7.77\times10^{-2}$ & 3 & 0.739 & --- \\
+$6.73\times10^{-2}$ & 4 & 0.693 & 11 (0.6)\\
+$6.42\times10^{-2}$ & 5 & 0.674 & 11 (12.1)\\
+$6.01\times10^{-2}$ & \multicolumn{2}{c}{infeasible} & (below floor)\\
 \hline
 \end{tabular}
 \end{table}
@@ -1855,30 +1708,38 @@ large $r_x$ on this path requires model reduction or structure exploitation
 
 \emph{The linear--quadratic case is $O(r_x^3)$ via Riccati.} When the inner problem
 is linear and unconstrained---the LQG setting of Section~\ref{sec:lqg}, and, in its
-robust form, the MTDC study of Section~\ref{sec:sim:mtdc}---the \emph{same} optimal
+robust form, the control half of the MTDC study of Section~\ref{sec:sim:mtdc}---the \emph{same} optimal
 value and envelope gradient are available without any interior-point step. The
 $H_2$ control cost $J_c=\operatorname{tr}(P W)$ comes from the control Riccati
 equation; the gradient needs only the stationary closed-loop covariance $\Sigma_x$
 from one discrete Lyapunov solve; and the estimation half comes from the dual
-(filter) Riccati. The robust ($H_\infty$) output-feedback value used for MTDC ---
-$J_{\mathrm{det}}=\operatorname{tr}(XW)$ and $J_{\mathrm{est}}=\operatorname{tr}(M\Sigma_e)$
---- is identical in cost: both game Riccatis \eqref{eq:gare} are DAREs in augmented
-data, so they use the \emph{same} doubling and the \emph{same} envelope identities
-\eqref{eq:gare_grad}. Each of these is $O(r_x^3)$, and
-structure-preserving doubling converges in a handful of iterations: the Riccati
-solve took $\approx\!13\,$ms at $r_x=200$ and $\approx\!60\,$ms at $r_x=400$
-(the MTDC game Riccati at $r_x=50$ solves in $\approx\!2\,$ms), i.e.\
+(filter) Riccati. The robust ($H_\infty$) control value
+$J_{\mathrm{det}}=\operatorname{tr}(XW)$ (MTDC's droop half) is identical in cost: the
+game Riccati \eqref{eq:gare} is a DARE in augmented data, so it uses the \emph{same}
+doubling and the \emph{same} envelope identities \eqref{eq:gare_grad}. Each is
+$O(r_x^3)$, and structure-preserving doubling converges in a handful of iterations:
+the Riccati solve took $\approx\!13\,$ms at $r_x=200$ and $\approx\!60\,$ms at
+$r_x=400$ (the MTDC game Riccati at $r_x=30$ solves in under a millisecond), i.e.\
 three-to-four orders of magnitude faster than the SDP at the crossover and scalable
 to the hundreds of states large power-system models require. For the $H_2$ case the
 interior-point covariance program and the Riccati recursion return the identical
-value and gradient (they agreed to $2\!\times\!10^{-7}$ in our tests); we prefer the
-SDP form when its flexibility is needed---indefinite couplings, output-variance or
-chance constraints, or the joint estimation--control LMI---and the Riccati form, at
-$O(r_x^3)$, whenever the inner problem is a plain (or game-type) linear-quadratic
-regulator. The $H_\infty$ case tips the balance further toward Riccati: at the
-minimal-$\gamma$ optimum the bounded-real LMI \eqref{eq:Hinf_cont} is rank-deficient
-and its dual ill-conditioned, whereas the fixed-$\gamma$ game Riccati is
-well-posed---so for robust co-design we use the Riccati form throughout.
+value and gradient (they agreed to $2\!\times\!10^{-7}$ in our tests).
+
+\emph{Why keep the SDP route.} The Riccati route is cheaper ($O(r_x^3)$ vs.\
+$O(r_x^6)$), so we use it whenever the inner problem is a plain or game-type LQR. Its
+limit is structural: a single algebraic Riccati fixes both the Lyapunov certificate
+and the full, centralized gain in closed form, admitting no side constraints. The
+SDPs \eqref{eq:Jcont}--\eqref{eq:Jest} instead keep the certificate $\Sigma$ (or $P$)
+as an explicit LMI variable, so any convex conic constraint on $(\Sigma,K,G)$ with
+$C^1$ data enters through \eqref{eq:generic} and contributes one extra dual term
+$\langle S_i^\star,\partial_\theta\mathcal M_i\rangle$ to the \emph{same} envelope
+gradient---the modeling flexibility catalogued in Section~\ref{sec:related}. The MTDC
+per-converter-current caps (Section~\ref{sec:sim:mtdc}) are a concrete instance: their
+sensor selection, cap shadow prices, and infeasibility floor are all read from these
+SDP duals, and none reduces to a Riccati. We therefore treat the two forms as
+interchangeable back ends---Riccati at $O(r_x^3)$ for plain LQR, SDP when such
+constraints are in play---and robust co-design uses both: the fixed-$\gamma$ game
+Riccati for the control half, the $\ell_1$ estimation SDP for the sensing half.
 
 \emph{Takeaway.} ContEst's outer cost is (number of designs evaluated) $\times$
 (one inner solve $+\;O(r_x^2 r_\theta)$). The envelope gradient keeps the
@@ -1895,34 +1756,20 @@ conic solver, is what makes large-scale ContEst tractable.
 \label{sec:sim:summary}
 %-----------------------------------------------------------------------
 
-Table~\ref{tab:formulations} consolidates the four studies---their state/input/output
-dimensions, the design vector $\theta=(\theta_f,\theta_h)$ and where each axis enters
-($\bar f$, $\bar h$, or the noise level $V$), the inner value used, and the
-estimation/control/total reductions---and Table~\ref{tab:summary} gives the absolute
-cost split for the three nonlinear (eKF--MPC) studies. In those three the total cost
-falls by $6$--$35\%$, with a reduction in the estimation
-cost $J_{\mathrm{est}}$ in every case, and---by construction---each optimum is an
-interior trade rather than a parameter pinned at a bound. The nature of the gain
-varies with the physics: for the spacecraft, a single
-\emph{power/mass budget} is split across the star tracker, rate gyro and reaction
-wheel, favouring attitude sensing ($J_{\mathrm{est}}$ down $23.8\%$, the largest
-sensing gain of the closed-loop studies); for the column both axes are
-\emph{placements}---feed streams and sensor trays---and the gain is estimation-led
-($J_{\mathrm{est}}$ down $22.8\%$ against a nearly flat $J_{\mathrm{det}}$);
-and for the low-inertia grid the sensing axis is the \emph{tuning of a dynamic
-estimator} (PLL bandwidth), which enters the measurement covariance $V(\theta)$ and,
-paired with the extra inverter damping it unlocks, drives by far the largest total
-reduction ($34.8\%$). The large-scale MTDC study is reported separately because its
-inner value is the robust $H_\infty$ worst-case (guaranteed) cost, on a different
-numerical scale from the sampled closed-loop costs of the other three: there a single
-\emph{control-side} droop axis reshapes the shared dynamics $A(\theta)$ and thereby
-improves \emph{both} halves of the output-feedback design---$J_{\mathrm{est}}$ down
-$42.6\%$, $J_{\mathrm{det}}$ down $39.7\%$, $J_{\mathrm{tot}}$ down $43.4\%$
-(Table~\ref{tab:formulations})---the design-level coupling a place-then-control
-pipeline cannot exploit. Every study compares against the no-upgrade / naive
-baseline $\theta_{\mathrm{nom}}$ of its section (for the eKF--MPC studies, a
-certainty-equivalence controller on the eKF mean; Section~\ref{sec:numerical}),
-at a cost of a handful of inner convex solves per design.
+Table~\ref{tab:formulations} consolidates the four studies (dimensions, the design
+split $\theta=(\theta_f,\theta_h)$ and where each axis enters, the inner value, and
+the reductions); the absolute baseline$\to$optimum costs are reported compactly with
+each study above. Across the three nonlinear (eKF--MPC) studies the total cost falls by
+$6$--$35\%$, with $J_{\mathrm{est}}$ reduced in every case, and each optimum is an
+interior trade rather than a parameter pinned at a bound. The MTDC study is reported
+separately, its robust $H_\infty$ control cost and covariance-SDP estimation cost
+sitting on a different scale: there the control-side droop reshapes the shared
+dynamics $A(\theta)$ and improves \emph{both} halves ($J_{\mathrm{est}}$ $-60.8\%$,
+$J_{\mathrm{det}}$ $-38.2\%$, $J_{\mathrm{tot}}$ $-49.7\%$) while the
+$\ell_1$-allocated sensing axis prunes the telemetry to $4$ of $15$ sensors---a
+coupling a place-then-control pipeline cannot exploit. Every study compares against
+the naive baseline $\theta_{\mathrm{nom}}$ of its section (for the eKF--MPC studies,
+a certainty-equivalence controller on the eKF mean; Section~\ref{sec:numerical}).
 
 \begin{table*}[t]
 \centering
@@ -1930,9 +1777,10 @@ at a cost of a handful of inner convex solves per design.
 design vector $\theta=(\theta_f,\theta_h)$ as $n_f{+}n_h$ with where each axis enters
 ($\bar f$ dynamics/actuation, $\bar h$ output map, or the measurement covariance
 $V$); the inner value (eKF--MPC yields $H_2$/sampled closed-loop costs, MTDC the
-$H_\infty$ worst-case guaranteed costs); and the estimation/control/total reductions.
-MTDC's single control-side axis still improves $J_{\mathrm{est}}$ because $\theta_f$
-reshapes the shared dynamics that the H$_\infty$ filter must estimate through.}
+$H_\infty$ worst-case control cost with a covariance-SDP estimation cost); and the
+estimation/control/total reductions. The MTDC row is the droop co-design (all $15$
+sensors); its sensing axis $\alpha$ is exercised as the sparse allocation of
+Table~\ref{tab:mtdc-alloc}.}
 \label{tab:formulations}
 \begin{tabular}{lcclcccc}
 \hline
@@ -1942,40 +1790,9 @@ study & $(r_x,r_u,r_y)$ & $\theta$: $n_f{+}n_h$ (enters) & inner value
 ADCS (spacecraft) & $(6,3,6)$   & $1{+}2$: $e_{\mathrm{rw}}\!\in\!\bar f$, $\alpha\!\in\!V$ & eKF--MPC ($H_2$) & $23.8\%$ & $4.0\%$  & $\mathbf{7.7\%}$\\
 Distillation      & $(12,1,3)$  & $3{+}3$: feeds $\in\!\bar f$, sensors $\in\!\bar h$ & eKF--MPC ($H_2$) & $22.8\%$ & $1.9\%$  & $\mathbf{6.5\%}$\\
 PLL/DSE (grid)    & $(9,3,6)$   & $3{+}3$: $e\!\in\!\bar f$, $b\!\in\!\bar f,V$ & eKF--MPC ($H_2$) & $20.9\%$ & $40.6\%$ & $\mathbf{34.8\%}$\\
-MTDC (HVDC)       & $(50,25,25)$& $25{+}0$: $k\!\in\!\bar f$ (droop)            & $H_\infty$ output-fb. & $42.6\%$ & $39.7\%$ & $\mathbf{43.4\%}$\\
+MTDC (HVDC)       & $(30,15,15)$& $15{+}15$: $k\!\in\!\bar f$, $\alpha\!\in\!C$   & $H_\infty$ ctrl $+$ cov-SDP est. & $60.8\%$ & $38.2\%$ & $\mathbf{49.7\%}$\\
 \hline
 \end{tabular}
-\end{table*}
-
-\begin{table*}[t]
-\centering
-\caption{Summary of cost reductions (baseline $\to$ ContEst optimum
-$\theta^\star$). $J_{\mathrm{est}}$: estimation cost; $J_{\mathrm{det}}$: control
-cost; $J_c=J_{\mathrm{det}}+J_{\mathrm{est}}$;
-$J_{\mathrm{tot}}=J_c+J_{\mathrm{des}}$. Percentages are reductions
-(larger is better). Baseline is the naive / no-upgrade $\theta_{\mathrm{nom}}$ of
-each study (uniform budget for ADCS, naive
-default placement for distillation, nominal actuators and PLL for the low-inertia
-grid).}
-\label{tab:summary}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccccccc}
-\hline
-& \multicolumn{2}{c}{$J_{\mathrm{est}}$}
-& \multicolumn{2}{c}{$J_{\mathrm{det}}$}
-& \multicolumn{2}{c}{$J_c$}
-& $J_{\mathrm{des}}$
-& \multicolumn{2}{c}{$J_{\mathrm{tot}}$}\\
-\cline{2-3}\cline{4-5}\cline{6-7}\cline{9-10}
-study & base $\to$ opt & red. & base $\to$ opt & red. & base $\to$ opt & red.
-& opt & base $\to$ opt & red.\\
-\hline
-ADCS (spacecraft)& $173.1\to132.0$ & $23.8\%$ & $448.3\to430.5$ & $4.0\%$  & $621.4\to562.5$ & $9.5\%$  & $11.0$ & $621.4\to573.5$  & $\mathbf{7.7\%}$\\
-Distillation     & $12.8\to9.9$    & $22.8\%$ & $19.5\to19.1$   & $1.9\%$  & $32.3\to29.0$   & $10.2\%$ & $1.2$  & $32.3\to30.2$    & $\mathbf{6.5\%}$\\
-PLL/DSE (grid)   & $26.6\to21.0$   & $20.9\%$ & $151.9\to90.2$  & $40.6\%$ & $178.5\to111.2$ & $37.7\%$ & $5.2$  & $178.5\to116.4$  & $\mathbf{34.8\%}$\\
-\hline
-\end{tabular}%
-}
 \end{table*}
 
 %=======================================================================
@@ -2007,67 +1824,110 @@ discussions.
 \section{Proof of the LQG regularity Proposition}\label{app:lqgreg}
 %=======================================================================
 
-This appendix proves Proposition~\ref{prop:lqgreg} and derives the dual
-identities $S_{11}^\star=P$, $S_{11}^{\prime\star}=\Sigma^\varepsilon$, replacing
-the pointer to the sensitivity literature in Corollary~\ref{cor:lqg} with a
-self-contained argument. We give the control SDP~\eqref{eq:Jcont}; the estimation
+This appendix proves Proposition~\ref{prop:lqgreg} by verifying
+Assumption~\ref{as:env}(A1)--(A4) for the control SDP~\eqref{eq:Jcont} and, in the
+course of (A3), deriving the dual identity $S_{11}^\star=P$. The estimation
 SDP~\eqref{eq:Jest} is its formal dual (swap $A_\theta\!\leftrightarrow
 A_\theta^\top$, $B_\theta\!\leftrightarrow C_\theta^\top$, $W\!\leftrightarrow Q$,
-$R\!\leftrightarrow V$) and the same steps apply verbatim, yielding
+$R\!\leftrightarrow V$; detectability for stabilizability); the same steps yield
 $P^{\varepsilon\star}=\Sigma^\varepsilon$ and $S_{11}^{\prime\star}=
-\Sigma^\varepsilon$.
+\Sigma^\varepsilon$. Write the program as $V(\theta)=\min_z f(z,\theta)$ s.t.\
+$z\in\mathcal C(\theta)$, with $z=(\Sigma,L,Z_0)$, linear objective
+$f=\operatorname{tr}(Q\Sigma)+\operatorname{tr}(RZ_0)$, and $\mathcal C(\theta)$ the
+two inequalities $M_1=\left[\begin{smallmatrix}Z_0&L\\ L^\top&\Sigma
+\end{smallmatrix}\right]\succeq0$ and $M_2=\left[\begin{smallmatrix}\Sigma-W&
+A_\theta\Sigma+B_\theta L\\ \star&\Sigma\end{smallmatrix}\right]\succeq0$. Assume
+$(A_\theta,B_\theta)$ stabilizable and $Q,R,W\succ0$.
 
-\emph{(a) Slater.} Pick any stabilizing $K_0$ (one exists by stabilizability) and
-let $\Sigma_0\succ0$ solve the strict Lyapunov inequality $A_{\mathrm{cl},0}
-\Sigma_0 A_{\mathrm{cl},0}^\top-\Sigma_0+W\prec0$ with $A_{\mathrm{cl},0}=
-A_\theta+B_\theta K_0$; such $\Sigma_0$ exists because $A_{\mathrm{cl},0}$ is
-Schur and $W\succ0$. Setting $L_0=K_0\Sigma_0$ and $Z_0\succ K_0\Sigma_0K_0^\top$
-makes both LMIs of \eqref{eq:Jcont} strictly feasible, so Slater holds and strong
-duality with attainment follows \cite{boyd2004convex}.
+\emph{(A1) Convexity, smooth data, strong duality.} $f$ is linear and
+$\mathcal C(\theta)$ is defined by inequalities affine in $z$ (hence a convex set)
+whose coefficients are affine in the model matrices $(A_\theta,B_\theta,Q,R,W)$, so
+the data are jointly $C^1$ in $(z,\theta)$. A strictly feasible point exists: for any
+stabilizing $K_0$ let $\Sigma_0\succ0$ solve $A_{\mathrm{cl},0}\Sigma_0
+A_{\mathrm{cl},0}^\top-\Sigma_0+W\prec0$ ($A_{\mathrm{cl},0}=A_\theta+B_\theta K_0$
+Schur, $W\succ0$) and set $L_0=K_0\Sigma_0$, $Z_0\succ K_0\Sigma_0K_0^\top$; both
+inequalities hold strictly. Slater then gives strong duality with attained primal
+and dual solutions \cite{boyd2004convex}.
 
-\emph{(b) Primal uniqueness.} With $W\succ0$, the second LMI of \eqref{eq:Jcont}
-forces $\Sigma\succ0$ and, taking Schur complements, encodes
-$A_{\mathrm{cl}}\Sigma A_{\mathrm{cl}}^\top-\Sigma+W\preceq0$ for the gain
-$K=L\Sigma^{-1}$; a Lyapunov-eigenvector argument then shows any feasible
-$(\Sigma,L)$ has Schur $A_{\mathrm{cl}}$, i.e.\ encodes a stabilizing gain. The
-objective is the stationary cost $J(K)=\operatorname{tr}(Q\Sigma_K)+
-\operatorname{tr}(RK\Sigma_KK^\top)$, and completion of squares against the
-optimal $K^\star$ gives
+\emph{(A2) Unique primal minimizer.} With $W\succ0$, $M_2\succeq0$ forces
+$\Sigma\succ0$ and (Schur complement) $A_{\mathrm{cl}}\Sigma A_{\mathrm{cl}}^\top-
+\Sigma+W\preceq0$ for $K=L\Sigma^{-1}$; a Lyapunov-eigenvector argument makes every
+feasible $A_{\mathrm{cl}}$ Schur. On this set the objective equals the stationary
+cost $J(K)$, and completion of squares against the optimal $K^\star$ gives
 \begin{equation}\label{eq:cos}
 J(K)-\operatorname{tr}(PW)=\operatorname{tr}\!\big((K-K^\star)^\top
-(R+B_\theta^\top PB_\theta)(K-K^\star)\Sigma_K\big),
+(R+B_\theta^\top PB_\theta)(K-K^\star)\,\Sigma_K\big),
 \end{equation}
-with $P$ the stabilizing solution of the control DARE. Since $R+B_\theta^\top
-PB_\theta\succ0$ and $\Sigma_K\succ0$, the right-hand side is zero iff
-$K=K^\star$, so the minimizer $\Sigma^\star=\Sigma_{K^\star}$ (and
-$L^\star=K^\star\Sigma^\star$) is unique.
+with $P$ the stabilizing control-DARE solution. Since $R+B_\theta^\top PB_\theta
+\succ0$ and $\Sigma_K\succ0$, the right side vanishes iff $K=K^\star$, so the
+minimizer $(\Sigma^\star,L^\star,Z_0^\star)$ is unique.
 
-\emph{(c) Dual uniqueness, strict complementarity, and $S_{11}^\star=P$.} Let
-$S=\left[\begin{smallmatrix}S_{11}&S_{12}\\S_{12}^\top&S_{22}\end{smallmatrix}
-\right]\succeq0$ be the dual of the second LMI. Complementary slackness aligns the
-range of $S$ with the kernel of the (rank-deficient at optimum) primal slack,
-$\ker\mathcal G^\star=\operatorname{range}[\,I;\,-A_{\mathrm{cl}}^{\star\top}\,]$,
-which parametrizes $S$ through $S_{12}=-S_{11}A_{\mathrm{cl}}^\star$ (so
-$S_{12}^\star=-PA_{\mathrm{cl}}^\star$) up to the free block
-$S_{11}$. Stationarity of the Lagrangian in $\Sigma$ then reads
-\begin{equation}\label{eq:stein}
-S_{11}=Q+K^{\star\top}RK^\star+A_{\mathrm{cl}}^\top S_{11}A_{\mathrm{cl}},
+\emph{(A4) Smooth parameter entry.} The variables and cones do not depend on
+$\theta$; $\theta$ enters only through $A_\theta,B_\theta$ (and, if co-designed,
+$W,Q,R$), each $C^1$ in $\theta$, so $\nabla_\theta V=\langle\lambda^\star,
+\partial_\theta(\text{data})\rangle$ once the multiplier $\lambda^\star$ is unique.
+
+\emph{(A3) Unique dual, strict complementarity, and $S_{11}^\star=P$.} This is the
+one delicate assumption; we prove it by \emph{constructing} the dual and showing it
+is a single point. At the optimum both constraints are rank deficient. Using the
+Lyapunov equality $\Sigma^\star-W=A_{\mathrm{cl}}\Sigma^\star A_{\mathrm{cl}}^\top$
+and $A_\theta\Sigma^\star+B_\theta L^\star=A_{\mathrm{cl}}\Sigma^\star$,
+\begin{equation}\label{eq:rank1}
+M_1^\star=\begin{bmatrix}K^\star\\ I\end{bmatrix}\Sigma^\star
+\begin{bmatrix}K^\star\\ I\end{bmatrix}^{\!\top}\!,\qquad
+M_2^\star=\begin{bmatrix}A_{\mathrm{cl}}\\ I\end{bmatrix}\Sigma^\star
+\begin{bmatrix}A_{\mathrm{cl}}\\ I\end{bmatrix}^{\!\top}\!,
 \end{equation}
-the closed-loop Stein (Lyapunov) equation, whose solution is unique because
-$A_{\mathrm{cl}}$ is Schur. But the control DARE is exactly $P=Q+
-K^{\star\top}RK^\star+A_{\mathrm{cl}}^\top PA_{\mathrm{cl}}$, so \eqref{eq:stein}
-gives $S_{11}=P$: the $(1,1)$ dual block \emph{is} the control Riccati solution,
-and the dual is unique. Strict complementarity holds because $P\succeq Q\succ0$
-and $R\succ0$ make the primal and dual slacks have complementary full rank. This
-verifies Assumption~\ref{as:env}(A1)--(A3); (A4) is the modeling hypothesis that
-$\theta$ enters only through $C^1$ data, and Corollary~\ref{cor:lqg} follows.
+each of rank $n$, with $\ker M_1^\star=\operatorname{range}[\,I;-K^{\star\top}]$ and
+$\ker M_2^\star=\operatorname{range}[\,I;-A_{\mathrm{cl}}^\top]$. For PSD multipliers
+$N\succeq0$ (of $M_1$) and $S\succeq0$ (of $M_2$), complementary slackness
+$NM_1^\star=0$, $SM_2^\star=0$ force $\operatorname{range}N\subseteq\ker M_1^\star$
+and $\operatorname{range}S\subseteq\ker M_2^\star$; a PSD matrix with range in
+$\operatorname{range}(J)$ must factor as $J(\cdot)J^\top$, so
+\begin{equation}\label{eq:lift}
+N=\begin{bmatrix}I\\ -K^{\star\top}\end{bmatrix}\Theta
+\begin{bmatrix}I\\ -K^{\star\top}\end{bmatrix}^{\!\top}\!,\qquad
+S=\begin{bmatrix}I\\ -A_{\mathrm{cl}}^\top\end{bmatrix}\Xi
+\begin{bmatrix}I\\ -A_{\mathrm{cl}}^\top\end{bmatrix}^{\!\top}\!,\qquad
+\Theta\in\mathbb S^m_+,\ \Xi\in\mathbb S^n_+ .
+\end{equation}
+Thus the whole dual is carried by two cores $\Theta=N_{11}$, $\Xi=S_{11}$, with
+$N_{12}=-\Theta K^\star$ and $S_{12}=-\Xi A_{\mathrm{cl}}$. The Lagrangian
+$\mathcal L=\operatorname{tr}(Q\Sigma)+\operatorname{tr}(RZ_0)-\langle N,M_1\rangle
+-\langle S,M_2\rangle$ has three stationarity conditions,
+\begin{equation}\label{eq:kkt}
+\partial_{Z_0}\!:\,\Theta=R,\quad
+\partial_{L}\!:\,N_{12}=-B_\theta^\top S_{12},\quad
+\partial_{\Sigma}\!:\,Q-N_{22}-S_{11}-S_{22}-(A_\theta^\top S_{12}+S_{12}^\top A_\theta)=0.
+\end{equation}
+The first fixes $\Theta=R$, hence $N_{12}=-RK^\star$ and $N_{22}=K^{\star\top}RK^\star$;
+the second then reads
+\begin{equation}\label{eq:star}
+B_\theta^\top\Xi A_{\mathrm{cl}}=-RK^\star .
+\end{equation}
+Writing $A_\theta=A_{\mathrm{cl}}-B_\theta K^\star$ in $\partial_\Sigma$, the
+relation \eqref{eq:star} cancels every $B_\theta$-cross term---explicitly
+$A_\theta^\top\Xi A_{\mathrm{cl}}+A_{\mathrm{cl}}^\top\Xi A_\theta=
+2A_{\mathrm{cl}}^\top\Xi A_{\mathrm{cl}}+2K^{\star\top}RK^\star$---and
+$\partial_\Sigma$ collapses to the closed-loop Stein equation
+\begin{equation}\label{eq:stein}
+\Xi=Q+K^{\star\top}RK^\star+A_{\mathrm{cl}}^\top\Xi A_{\mathrm{cl}} .
+\end{equation}
+Since $A_{\mathrm{cl}}$ is Schur, \eqref{eq:stein} has a unique solution; the control
+DARE is exactly $P=Q+K^{\star\top}RK^\star+A_{\mathrm{cl}}^\top PA_{\mathrm{cl}}$, so
+$\Xi=P$. Hence the dual is the single point $S=[\,I;-A_{\mathrm{cl}}^\top]P[\,I;
+-A_{\mathrm{cl}}^\top]^\top$ with $S_{11}^\star=P$ (and $N=[\,I;-K^{\star\top}]R[\,I;
+-K^{\star\top}]^\top$). Strict complementarity follows by rank counting:
+$\operatorname{rank}N=m$ ($\Theta=R\succ0$) and $\operatorname{rank}S=n$
+($\Xi=P\succ0$ from $Q\succ0$) complete the ranks of $M_1^\star,M_2^\star$ (both $n$)
+to full. This verifies (A1)--(A3); with (A4), Corollary~\ref{cor:lqg} follows.
 \hfill$\square$
 
-The identity $S_{11}^\star=P$ (and dually $S_{11}^{\prime\star}=
-\Sigma^\varepsilon$) is what makes the covariance-SDP gradient
-$\partial J_{\mathrm{cont}}/\partial W=-S_{11}^\star$ of \eqref{eq:gradQRcont}
-numerically identical to the Riccati gradient $\partial\operatorname{tr}(PW)/
-\partial W=P$ used in Section~\ref{sec:sim:complexity}.
+The identity $S_{11}^\star=P$ (dually $S_{11}^{\prime\star}=\Sigma^\varepsilon$) is
+what makes the covariance-SDP gradient $\partial J_{\mathrm{cont}}/\partial W=
+-S_{11}^\star$ of \eqref{eq:gradQRcont} numerically identical to the Riccati gradient
+$\partial\operatorname{tr}(PW)/\partial W=P$ used in
+Section~\ref{sec:sim:complexity}.
 
 %=======================================================================
 \section{Proof of the fixed-$\gamma$ $H_\infty$ regularity Proposition}
@@ -2185,6 +2045,60 @@ gradients of Appendix~\ref{app:lqgreg}. The $H_2$/LQG result is thus the
 $\gamma\!\to\!\infty$ boundary of this one, and (unlike the minimal-$\gamma$ BRL
 SDP of Remark~\ref{rem:hinfreg}) no rank drop or ill-conditioned dual ever enters
 the fixed-$\gamma$ route. \hfill$\square$
+
+%=======================================================================
+\section{Existence of a subgradient under (A1)}\label{app:subgrad}
+%=======================================================================
+
+Remark~\ref{rem:degenerate} claims that when (A1) holds but
+(A2)/(A3) fail, the design still admits a subgradient. We prove it: (A1) alone makes
+$V$ locally Lipschitz, so its Clarke subdifferential $\partial V(\theta)$ is nonempty,
+and the returned dual $\partial_\theta L(z^\star,\lambda^\star,\theta)$ (with
+$\lambda^\star=(\mu^\star,S^\star)$) is one of its elements.
+
+Assume (A1) on a neighborhood of $\theta$: for each nearby $\theta'$ the inner
+problem~\eqref{eq:generic} is convex with $C^1$ data, Slater holds (so strong duality
+holds with attained primal and dual optima), and the optimal primal and dual sets stay
+bounded. Two facts drive the argument.
+
+\emph{(i) Dual feasibility does not depend on $\theta$.} A dual point is feasible iff it
+lies in the fixed cone $\mathcal K^\ast$ (e.g.\ $S\succeq0$), which involves no $\theta$.
+Hence any dual optimum is feasible at \emph{every} nearby design, and weak duality gives
+\begin{equation}\label{eq:weak}
+V(\theta'')\ \ge\ \min_z L(z,\lambda,\theta'')\qquad\text{for every }\lambda\in\mathcal K^\ast .
+\end{equation}
+
+\emph{(ii) $L$ is Lipschitz in $\theta$ on the relevant set.} Since the data are $C^1$
+and the optimal $z,\lambda$ stay bounded near $\theta$, there is a finite $M$ with
+$\|\partial_\theta L(z,\lambda,\cdot)\|\le M$ over that bounded set.
+
+\emph{Local Lipschitz bound.} Fix nearby $\theta,\theta'$ and put
+$\lambda=\lambda^\star(\theta')$. By strong duality at $\theta'$,
+$V(\theta')=\min_z L(z,\lambda,\theta')$; by \eqref{eq:weak} at $\theta$,
+$V(\theta)\ge\min_z L(z,\lambda,\theta)$. Subtracting,
+\begin{equation*}
+V(\theta')-V(\theta)\ \le\ \min_z L(z,\lambda,\theta')-\min_z L(z,\lambda,\theta).
+\end{equation*}
+Let $z_\theta$ attain the second minimum. Then $\min_z L(z,\lambda,\theta')\le
+L(z_\theta,\lambda,\theta')$ while $\min_z L(z,\lambda,\theta)=L(z_\theta,\lambda,\theta)$,
+so the right-hand side is at most $L(z_\theta,\lambda,\theta')-L(z_\theta,\lambda,\theta)
+\le M\|\theta'-\theta\|$ by (ii). Swapping $\theta\leftrightarrow\theta'$ gives the
+reverse inequality, hence
+\begin{equation}\label{eq:lip}
+|V(\theta')-V(\theta)|\ \le\ M\,\|\theta'-\theta\| .
+\end{equation}
+
+\emph{Conclusion.} By \eqref{eq:lip} $V$ is locally Lipschitz, so (Rademacher) it is
+differentiable almost everywhere and its Clarke subdifferential
+$\partial V(\theta)=\operatorname{conv}\{\lim_k\nabla V(\theta_k):\theta_k\to\theta,\ V
+\text{ differentiable at }\theta_k\}$ is nonempty, compact and convex. At each
+differentiability point $\nabla V=\partial_\theta L$ by Theorem~\ref{prop:envelope}, so
+passing to the limit $\partial_\theta L(z^\star,\lambda^\star,\theta)\in\partial
+V(\theta)$: the dual the solver returns is a genuine subgradient. When (A2)--(A3) also
+hold this set collapses to the single point $\{\nabla V(\theta)\}$. Where (A1) itself
+fails---at a feasibility boundary where $V\to+\infty$, or where Slater or boundedness of
+the dual set is lost---the bound \eqref{eq:lip} breaks and no finite subgradient need
+exist. \hfill$\square$
 
 \bibliographystyle{plain}
 \bibliography{References}
