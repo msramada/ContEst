@@ -18,3 +18,7 @@
 *.vrb
 *.bcf
 *.run.xml
+
+# Committed paper figures (source images, not build artifacts) — keep these tracked.
+!figs/
+!figs/*.pdf

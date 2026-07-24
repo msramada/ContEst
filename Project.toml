@@ -1,12 +1,13 @@
 name = "ContEst"
 uuid = "cc7a5518-64ae-4b60-9f95-0297f37a71c5"
-authors = ["Mohammad <msramada@eng.ucsd.edu>"]
 version = "0.1.0"
+authors = ["Mohammad <msramada@eng.ucsd.edu>"]
 
 [deps]
 Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
@@ -15,6 +16,7 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Clarabel = "0.11.1"
 ForwardDiff = "1.3.3"
 JuMP = "1.30.0"
+LaTeXStrings = "1.4.0"
 LinearAlgebra = "1.11.0"
 Optim = "1"
 Plots = "1.41.6"

@@ -33,6 +33,7 @@
 
 include("../src/eKF.jl")
 include("../src/MPCs.jl")
+include("../src/Simulate.jl")
 include("../src/BFGS.jl")
 
 using LinearAlgebra, Optim, Printf
@@ -168,24 +169,21 @@ const θ_init = copy(θ_nom)
 # ── Objective + gradient (cached) ─────────────────────────────────────────────
 const contest_f, contest_g! = contest_objective(mpc_eval, x_ic, Σ_ic, u_lin, J_des, ∇J_des)
 
-# ── Cost decomposition (analytic open-loop; MC sampling skipped for this study) ─
-# The information-state MPC over Nst stages is heavy to simulate in closed loop, so
-# this study reports the open-loop breakdown: J_c is the MPC value and J_est the
-# design-time eKF covariance rollout, with J_det the remainder.
-function estimation_cost(θ)
-    W, V = resolve_covars(prob.Covars, θ)
-    x, Σ = copy(x_ic), copy(Matrix(Σ_ic))
-    Jest = tr(Q * Σ)
-    for _ in 2:prob.N
-        (x, Σ) = update((x, Σ), u_lin, zeros(prob.o), θ, f_dist, h_dist, (Matrix(W), Matrix(V)))
-        Jest  += tr(Q * Σ)
-    end
-    return Jest
-end
-function cost_breakdown(θ)
-    _, Jc, _, _ = mpc_eval(x_ic, Σ_ic, u_lin, θ)
-    Jest = estimation_cost(θ)
-    return (; J_est = Jest, J_det = Jc - Jest, J_c = Jc, J_des = J_des(θ), J_tot = Jc + J_des(θ))
+# ── Sampled closed-loop cost breakdown (realised cost on the true trajectory) ──
+# Both the baseline (θ_nom) and the ContEst optimum (θ*) run the SAME
+# information-state MPC; the ONLY difference is the design θ, so the reported
+# reduction isolates the pure co-design gain (no controller upgrade). Costs are
+# Monte-Carlo averages of the realised cost over M = 100 sample trajectories, each
+# a T = 30-step closed-loop rollout of the true nonlinear plant (the MPC still
+# plans over its N = 12 horizon). Both J_det and J_est use the true state.
+const M_mc  = 100        # Monte-Carlo sample trajectories
+const T_sim = 30         # closed-loop simulation horizon (steps)
+ctrl_info(xe, Σe, θ) = mpc_eval(xe, Σe, u_lin, θ; grad = false)[1]
+function cost_breakdown(θ, ::Symbol)
+    r  = simulate_mc(prob, ctrl_info, θ, Matrix(Q), x_ic, Σ_ic;
+                     n_samples = M_mc, N_sim = T_sim)
+    Jc = r.J_det + r.J_est
+    return (; J_est = r.J_est, J_det = r.J_det, J_c = Jc, J_des = J_des(θ), J_tot = Jc + J_des(θ))
 end
 
 # ── Run ───────────────────────────────────────────────────────────────────────

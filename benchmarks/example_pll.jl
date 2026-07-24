@@ -144,13 +144,18 @@ const θ_ub  = [fill(3.0, NB); fill(20.0, NB)]
 const θ_nom = [ones(NB); fill(b_nom, NB)]     # baseline: nominal actuators, naive PLL
 
 # ── Sampled closed-loop cost breakdown (realised cost on the true trajectory) ──
-# Baseline runs the certainty-equivalence controller (eKF mean only); the ContEst
-# optimum runs the information-state MPC. Both J_det and J_est use the true state.
+# Both the baseline (θ_nom) and the ContEst optimum (θ*) run the SAME
+# information-state MPC; the ONLY difference is the design θ, so the reported
+# reduction isolates the pure co-design gain (no controller upgrade). Costs are
+# Monte-Carlo averages of the realised cost over M = 100 sample trajectories, each
+# a T = 30-step closed-loop rollout of the true nonlinear plant (the MPC still
+# plans over its N = 12 horizon). Both J_det and J_est use the true state.
+const M_mc  = 100        # Monte-Carlo sample trajectories
+const T_sim = 30         # closed-loop simulation horizon (steps)
 ctrl_info(xe, Σe, θ) = mpc_eval(xe, Σe, u_lin, θ; grad = false)[1]
-ctrl_mean(xe, Σe, θ) = ce_mpc(xe, u_lin, θ)
-function cost_breakdown(θ, role::Symbol)
-    ctrl = role == :baseline ? ctrl_mean : ctrl_info
-    r  = simulate_mc(prob, ctrl, θ, Matrix(Q), x_ic, Σ_ic)
+function cost_breakdown(θ, ::Symbol)
+    r  = simulate_mc(prob, ctrl_info, θ, Matrix(Q), x_ic, Σ_ic;
+                     n_samples = M_mc, N_sim = T_sim)
     Jc = r.J_det + r.J_est
     return (; J_est = r.J_est, J_det = r.J_det, J_c = Jc, J_des = J_des(θ), J_tot = Jc + J_des(θ))
 end
