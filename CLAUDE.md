@@ -17,36 +17,51 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
 
 ## Simulations
 
-- Examples are the `benchmarks/example_*.jl` files. The ones **included in the
-  paper** are three nonlinear (eKF–MPC) studies —
-  `example_adcs.jl` (spacecraft: shared power/mass budget split across
-  sensors+wheels via `V(θ)`), `example_distillation.jl` (feed-stage/sensor-tray
-  placement), and `example_pll.jl` (PLL/DSE estimator co-design, bias–variance
-  `V(θ)`) — plus one **linear, robust (H∞) two-axis** study,
-  `example_mtdc.jl` (multi-terminal HVDC, 30 states / `NT=15` terminals): a MERGED
-  co-design of the **control droop `θ_f=k`** (enters `A`) via the **H∞ game Riccati**
-  (`src/Hinf.jl` `hinf_gare`, fixed `γ²=8`, `J_det=tr(XW)`, U-shaped worst-case cost)
-  AND the **sensing gains `θ_h=α`** (enter `C`) via an **ℓ1 covariance-SDP**
-  (JuMP/Clarabel): posterior error-cov bound `X ⪰ (Σ_pred(θ)⁻¹ + Σⱼ αⱼ CⱼᵀCⱼ/v)⁻¹`
-  with `Σ_pred(θ)=dlyap(A(θ),W)`, sparse ℓ1 sensor selection, and **per-converter-current
-  estimation caps `[X]_{2i,2i} ≤ tol`** (`J_est=tr(QX)`). The caps + discrete selection
-  make the estimation half **SDP-only** (no Riccati expresses per-state covariance caps
-  with an active set); the cap duals are **shadow prices** localizing essential sensors
-  (terminal 11), with an **infeasibility floor** below the all-on covariance. The droop
-  enters `A`, so it reshapes BOTH `X` (game Riccati) and `Σ_pred(θ)` (estimation prior),
-  coupling the two axes. Report `mtdc_report()` prints: (A) droop co-design (all 15
-  sensors: `J_det −38.2%`, `J_est −60.8%`, `J_tot −49.7%`), (B) ℓ1 frontier, (C) capped
-  ℓ1-SDP + shadow prices, (D) merged optimum (4 of 15 sensors `{4,7,11,12}`, `J_c −40.9%`).
-  Droop step: `Optim` `Fminbox(LBFGS())` on `Jdet+Jest+c_k Σθ`; sensor step: `sensor_sdp`
-  (Clarabel). (The earlier 50-state droop-only `Hinf_of_θ`/`hinf_of_report` version — a
-  dual filter GARE `J_est=tr(QΣe)` with no sensor allocation — was replaced; see
-  `MTDC_old_example_summary.md`. `Hinf_of_θ`/`hinf_filter_gare` remain in `src/Hinf.jl`
-  but are no longer used by the example.)
+- Examples are the `benchmarks/example_*.jl` files. Four studies are **included
+  in the paper**: two nonlinear (eKF–MPC) studies — `example_distillation.jl`
+  (feed-stage/sensor-tray placement) and `example_pll.jl` (PLL/DSE estimator
+  co-design, bias–variance `V(θ)`) — a linear steady-state SDP study,
+  `example_adcs_hinfest.jl` (spacecraft ADCS: `H₂` control under a hard
+  control-effort-covariance cap `+` worst-case `H∞` robust estimation, shared
+  power/mass budget across wheel authority `e_rw` and sensor precisions
+  `α_st,α_gyro`; reported costs are Monte-Carlo realizations, M=100/T=30, of
+  the fixed linear gains on the true nonlinear plant — see below), and
+  `example_mtdc_sdp.jl` (multi-terminal HVDC, 30 states / `NT=15` ring
+  terminals, **last** in Section 9): a MERGED co-design of the **droop
+  `θ_f=k`** (enters `A`) and **sparse sensor gains `θ_h=α∈[0,1]`** (enter `C`),
+  **SDP path only — no Riccati equation anywhere**. Control is a
+  fixed-`γ²=20` `H∞` bounded-real-lemma SDP restricted to a **block-diagonal**
+  (fully decentralized) pattern — the tighter **banded** (ring-neighbour)
+  restriction is numerically **dual-degenerate** (confirmed: >100% disagreement
+  vs. a central finite difference, sign included) so it cannot drive BFGS, a
+  finding worth checking before reusing this file's control solver at a
+  different `γ²` or pattern. Estimation is the `H₂` SDP in the
+  observability-gramian (`P^ε`,`F`) form, restricted to the **banded**
+  pattern (no degeneracy there), with an `ℓ1` penalty `λ_s‖α‖₁` for sparse
+  sensing. The gradient check uses **central**, not forward, finite
+  differences (`h=1e-3`) and tightened Clarabel tolerances
+  (`tol_gap_abs=tol_gap_rel=tol_feas=1e-10`) on the control SDP — the default
+  tolerance leaves ~1e-5 absolute solver noise that swamps the true local
+  derivative at practical step sizes (confirmed empirically this session).
+  `mtdc_sdp_report()` prints: SDP validity (structured vs. full-dense, no
+  Riccati/Kalman reference), the gradient check (0.55% relative error, 30
+  params), a multi-start joint co-design (droop `θ*∈[0.89,1.67]`, 12/15
+  sensors kept, `J_est −31.8%`, `J_cont −33.4%`, `J_tot −21.6%`), and the
+  headline **sensor-count frontier**: fixed-droop pruning vs. co-designed
+  droop at each retained-sensor count, showing the co-designed droop with 6
+  sensors matches the pruned baseline's 15-sensor estimation cost (60% fewer
+  sensors, no loss in `J_est`) — droop coordination "buys back" voltage
+  sensors, the paper's headline for this study. Older MTDC files
+  (`example_mtdc.jl` base library, `example_mtdc_sparse.jl`,
+  `example_mtdc_alloc.jl`) remain as historical/dev exploration — same pattern
+  as ADCS's superseded `example_adcs.jl`/`_hinf.jl`/`_h2cap.jl` — and describe
+  an earlier Riccati-based or differently-patterned MTDC design no longer used
+  by the paper.
   Every study is posed so its optimum is a genuine **interior / non-monotone**
   trade (budgeted allocation, saturating benefit, or U-shape), not a parameter
   pinned at a bound. (`example_cstr.jl` was removed as trivial; the earlier LQG
   suite `example_inertia.jl`/`example_pss.jl`/`example_bess.jl`/`example_sensing.jl`
-  was removed, keeping only the MTDC study. The two-area WAMS study
+  was removed. The two-area WAMS study
   (`example_wams.jl`) and all WAMS experiments were removed: on both the LQG and
   the constrained eKF–MPC paths the co-design gate was ~0–1% over a competent
   sequential design and the joint optimum degraded inter-area damping — WAMS is
@@ -61,8 +76,11 @@ co-design by jointly optimizing actuation (`θ_f`, enters `f`) and sensing
   trajectories of the original cost** (`simulate_mc` in `src/Simulate.jl`), both
   components on the true state; the **baseline is a certainty-equivalence
   controller (eKF mean only)** via `certainty_equivalence_mpc`, the ContEst optimum
-  the information-state MPC. Only reporting changed, not `best_θ`. MTDC keeps its
-  exact steady-state values (H∞ game-Riccati control + covariance-SDP estimation).
+  the information-state MPC. Only reporting changed, not `best_θ`. MTDC and ADCS
+  are on the SDP path, not eKF-MPC: MTDC reports exact steady-state SDP/Lyapunov
+  values (no Monte Carlo — its plant is linear by construction, so there is no
+  surrogate-vs-truth gap to check), while ADCS reports Monte-Carlo realizations
+  of its fixed linear gains on the true (mildly nonlinear) plant.
 
 ## Commands
 

@@ -74,6 +74,21 @@
 \newcommand{\concern}[1]{{\color{red} #1}} % replace blue with black to add for real
 \newcommand{\matlab}{\mbox{\textsc{Matlab}}}
 
+% ===================== Reviewer annotations (Mihai) =====================
+% Color-coded todonotes: red = error/needs fixing, yellow = suggestion,
+% blue = explanatory note (what the author did / how to read this).
+% Remove this block and all \errornote/\suggestnote/\explainnote calls
+% before final submission.
+\usepackage[colorinlistoftodos,textsize=footnotesize]{todonotes}
+% NOTE: autart is a two-column class with narrow margins, so notes are set
+% "inline" (a colored box right in the text flow) rather than in the margin,
+% which would get clipped. Switch to margin notes by removing "inline," if
+% you compile single-column elsewhere.
+\newcommand{\errornote}[1]{\todo[inline,color=red!40,bordercolor=red]{\textbf{ERROR:} #1}}
+\newcommand{\suggestnote}[1]{\todo[inline,color=yellow!40,bordercolor=orange]{\textbf{Suggestion:} #1}}
+\newcommand{\explainnote}[1]{\todo[inline,color=blue!25,bordercolor=blue]{\textbf{Note:} #1}}
+% ===========================================================================
+
 \begin{document}
 
 \begin{frontmatter}
@@ -116,6 +131,7 @@ formulation to cover worst-case control and filtering problems. Furthermore, we 
 %=======================================================================
 \section{Introduction}\label{sec:intro}
 %=======================================================================
+\explainnote{Roadmap of the whole paper, for a first-time reader (and for me while reviewing): Sec.~2 is related work; Sec.~3 sets up the general two-stage design problem; Sec.~4 specializes it to LQG, where the inner problems become the two SDPs~\eqref{eq:Jcont}--\eqref{eq:Jest}; Sec.~5 is the core theoretical contribution -- the envelope-theorem argument that makes the design gradient free, plus the regularity conditions (Assumption~\ref{as:env}) under which it's exact vs.\ merely a subgradient; Sec.~6 redoes the same story for worst-case $H_\infty$; Sec.~7 covers the eKF/MPC nonlinear extension; Sec.~8 is a complexity discussion (see the section-ordering note there); Sec.~9 is the four numerical case studies; the appendices carry the heavier derivations (information-state reduction, the LQG regularity proof, and the subgradient existence proof).}
 
 Engineering systems are still, overwhelmingly, designed sequentially. A
 plant is first conceived by some set of disciplines, the sensing and
@@ -152,6 +168,7 @@ equation and the state dynamics; optimizing through it therefore improves the co
     \item Sensor allocation is absorbed directly into the formulation, either as a mixed-integer selection or as an $\ell_1$ relaxation promoting sparse sensing.
     \item We validate the framework on four realistic co-design studies across spacecraft, process, and power systems, with diverse objectives and modeling techniques.
 \end{itemize}
+\suggestnote{Consider adding a section pointer to each bullet (e.g. "(Sec.~3)", "(Sec.~4)"), the way many co-design/optimization papers do. A reader skimming the contributions list right now has no way to jump to where each claim is developed.}
 
 
 %=======================================================================
@@ -213,6 +230,7 @@ Table~\ref{tab:positioning} gives a summary comparison of other methods per capa
 itself designed'' means tuning a dynamic estimator (e.g.\ bandwidth 
 or noise level), not only sensor selection.}
 \label{tab:positioning}
+\explainnote{How to read this table: each column is a line of prior work, each row a capability; a checkmark means that line of work can do it, an $\times$ means it can't (or doesn't natively). The row that matters most for your pitch is "estimator itself designed", where ContEst is the only checkmark in the whole table -- that's the single strongest visual argument for novelty, worth calling out explicitly in the surrounding text (Sec.~2 already gestures at it but doesn't point at this specific row).}
 \small
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccc}
@@ -239,6 +257,7 @@ Throughout, $\| x \|_Q^2 = x^\top Q x$, $\mathbb{E}$ denotes expectation,
 $\operatorname{tr}(\cdot)$ the trace, and $M \succeq 0$ ($M \succ 0$) positive
 (semi)definiteness. For a signal $s$, $s_{i:j} = (s_i, s_{i+1}, \dots, s_j)$ denotes
 the sequence from time $i$ to $j$. The information available at time $k$. A superscript ${}^\star$ marks an optimal value.
+\errornote{"The information available at time $k$." is not a complete sentence -- it looks like a leftover fragment. Likely missing subject/verb, e.g. "$\mathcal Z_k$ denotes the information available at time $k$." Please fix before submission.}
 
 %=======================================================================
 \section{Problem formulation}\label{sec:formulation}
@@ -275,7 +294,9 @@ with the $\ell, \ell^N$ are stage and terminal costs are typically
 \begin{equation*}
    \ell(x_k,u_k) = \|x_k \|_Q ^2 + \| u_k\|_R^2, \quad \ell_N(x_N) = \| x_N \|_Q^2,
 \end{equation*}
+\errornote{Terminal cost notation is inconsistent: it's $\ell^N(x_N)$ (superscript) in Eq.~(2) above but $\ell_N(x_N)$ (subscript) here. Pick one and use it everywhere -- I'd suggest $\ell^N$ to avoid clashing with the time-index subscripts used everywhere else.}
 and the information up to time $k$, $\mathcal Z_k = (p_0, y_{0:k}, u_{0:k-1}$ and $\mathcal Z_0 = (p_0, y_0)$.
+\errornote{Missing closing parenthesis: should read $\mathcal Z_k = (p_0, y_{0:k}, u_{0:k-1})$ -- as written the paren opened before $y_{0:k}$ is never closed.}
 
 The above minimizations are possibly subject to state and input constraints and the expectation is over $(x_0, w_{0:N-1}, v_{0:N})$.
 
@@ -291,6 +312,7 @@ J(\theta) = J_{\mathrm{des}}(\theta) + J_{\mathrm{sc}}^\star(\mathcal Z_0;\theta
 
 \begin{rem}[Estimation co-design]
     Equations \eqref{eq:Jstoch_N} and \eqref{eq:Jstoch_infty}, although appear to be optimizing over control only, they implicitly require optimal estimation as well. The control policies are feedback in the information state (state filtered density), which require careful filter design for their reduction, approximation and accuratel tracking \cite{kumar2015stochastic}.
+\errornote{Typo: "accuratel" $\to$ "accurate".}
 \end{rem}
 
 \begin{rem}[Operating scenarios]\label{rem:scenarios}
@@ -307,7 +329,16 @@ statistic is the information state: the filtered density in this paper. The exac
 For a linear (or linearized) plant
 $$x_{k+1}=A_\theta x_k+B_\theta u_k+w_k, \quad y_k=C_\theta x_k+v_k,$$ with zero-mean
 the inner problem is an LQG problem whose cost splits, by
-the separation principle, into control and estimation parts
+the separation principle, into control and estimation parts,
+\add{with $Q \succeq 0 \in \mathbb{R}^{r_x \times r_x}$ and
+$R \succ 0 \in \mathbb{R}^{r_u \times r_u}$ the state and input cost
+weights already used in the stage cost $\ell$ of
+Section~\ref{sec:formulation} (Proposition~\ref{prop:lqgreg} below
+assumes the stronger $Q \succ 0$), and control input
+$u_k = Kx_{k \mid k}$ the certainty-equivalent state-feedback law
+(justified by the separation principle, see Appendix~\ref{app:infostate};
+$K$ is a free gain here, not yet the optimal one -- it becomes the
+optimal LQR gain once \eqref{eq:Jcont} below is solved)}
 \begin{equation} \label{eq:linear stoch cost}
 \begin{aligned}
 &J_{\mathrm{sc}}=J_{\mathrm{est}}(\theta)+J_{\mathrm{cont}}(\theta),\\
@@ -317,10 +348,11 @@ J_{\mathrm{cont}}=\operatorname{tr}(Q\Sigma)+\operatorname{tr}(RK\Sigma K^\top)
 \end{equation}
 (Appendix~\ref{app:infostate} contains the full derivation), where $\Sigma=\lim_{k \to \infty}\mathbf{Cov}( x_{k \mid k})$ is the
 steady-state estimated state covariance ($x_{k \mid k}$ is the state estimate given $\mathcal{Z}_k$), and $\Sigma^\varepsilon=\lim_{k \to \infty}\mathbf{Cov}(\varepsilon_k)$ the steady-state
-estimation-error covariance. Where the observer is given by
+estimation-error covariance. \add{With $G$ the observer (Kalman) gain,} the observer is given by
 \begin{align*}
     x_{k+1 \mid k+1} = A_\theta x_{k \mid k} + B_\theta u_k + G(y_k - C_\theta x_{k \mid k}).
 \end{align*}
+\errornote{Both $K$ (introduced only implicitly, just above in Eq.~\eqref{eq:linear stoch cost}) and $G$ (here) get used before ever being properly defined in the main text. $K$'s actual definition -- $u_k=\kappa(\mathcal Z_k)=Kx_{k\mid k}$, certainty-equivalent state feedback, justified by the separation principle -- only appears in Appendix~\ref{app:infostate}, which comes \emph{after} this section in reading order. $G$ never gets an explicit defining sentence anywhere in the paper at all; its role as the observer/innovation gain is only inferable from the structure of this one equation. I've added short inline reminders at both spots (in red), but the cleaner fix would be to move the "$u_k=Kx_{k\mid k}$, certainty equivalent control" sentence from Appendix~\ref{app:infostate} up to right before Eq.~\eqref{eq:linear stoch cost}, so both gains are named before they're used rather than after. Same recurring pattern as the $Q$ gap at Eq.~(4) and the $W,V$ gap at Eq.~(A.4)/(A.5) flagged earlier: symbols defined far from, or after, their first use.}
 For a
 fixed $\theta$, the two parts in \eqref{eq:linear stoch cost} depend on disjoint variables and are minimized
 independently \cite{tzoumas2021lqg}, but at the design level $\theta$ couples
@@ -392,6 +424,7 @@ $S' = \left[\begin{smallmatrix} S'_{11} & S'_{12} \\ S'^\top_{12} & S'_{22}
 \quad
 \frac{\partial J_{\mathrm{est}}^\star}{\partial C_\theta} = -2\, F^{\star} S^{\prime \star}_{12}.
 \end{equation}
+\explainnote{Worth a one-line remark here on why the operand order flips between~\eqref{eq:gradAB} ($S_{12}^\star\Sigma^\star$, dual-then-primal) and~\eqref{eq:gradAC} ($P^{\varepsilon\star}S_{12}^{\prime\star}$, primal-then-dual): it follows from the control/estimation problems being transposed duals of one another, but a reader seeing these side by side for the first time will likely wonder if it's a typo. Also double check the sign: \eqref{eq:gradAB} is $-2S_{12}^\star\Sigma^\star$ (minus) while \eqref{eq:gradAC} is $+2P^{\varepsilon\star}S_{12}^{\prime\star}$ (plus) -- please confirm this sign flip is intentional (it plausibly is, from the transpose/duality map), not a slip.}
 The design gradient follows by the chain rule
 (Section~\ref{sec:envelope}),
 \begin{align}\label{eq:chain}
@@ -475,6 +508,7 @@ complementary, so the dual $(\mu^\star,S^\star)$ is unique
 objects $D(\theta)$ (e.g.\ $A_\theta,B_\theta,C_\theta,W,V$) that are $C^1$
 in $\theta$.
 \end{assumption}
+\explainnote{Plain-language gloss on Assumption~\ref{as:env}, for readers who don't work in conic programming daily: (A1) says the inner problem is a "nice" convex program with no duality gap; (A2) says there's exactly one best solution, not a tie; (A3) says the same holds for the dual/multiplier side (this is the one that fails at degenerate optima, e.g.\ Remark~\ref{rem:exactfail}); (A4) says $\theta$ only shows up through a handful of matrices, so the chain rule in Section~\ref{sec:envelope}'s point (3) is cheap. Might be worth adding a sentence like this right after the assumption for accessibility.}
 
 Assumptions (A1)--(A3) are exactly the regularity under which the optimal value
 of a conic (in particular semidefinite) program is differentiable and its
@@ -504,6 +538,7 @@ $\nabla_\theta V = \nabla_z L\,\partial_\theta z^\star
 + \nabla_{(\mu,S)}L\,\partial_\theta(\mu^\star,S^\star) + \partial_\theta L
 = \partial_\theta L$ \cite{milgrom2002envelope,bonnans2000perturbation}.
 \end{proof}
+\explainnote{Proof in one line, for the reader: differentiate $V(\theta)=L(z^\star(\theta),\ldots,\theta)$ by the chain rule; the terms tracking how $z^\star,\mu^\star,S^\star$ move with $\theta$ all vanish because the inner problem's own first-order (stationarity) conditions say $\partial L/\partial z=0$, $\partial L/\partial \mu = 0$, $\partial L/\partial S=0$ at the optimum -- so only the "direct" $\partial_\theta L$ term survives. This is the whole reason the gradient is free: nobody needs to compute $\partial_\theta z^\star$.}
 
 \begin{proposition}[Exact gradient preserved under added convex structure]\label{prop:regexact}
 Augment \eqref{eq:generic} with any finite family of additional convex,
@@ -716,6 +751,7 @@ fails. By Proposition~\ref{prop:subgrad} the value is then locally Lipschitz
 and the BRL dual the solver returns is a genuine subgradient of
 $\gamma^{\star \, 2}_{\mathrm{cont}}$.
 \end{proof}
+\explainnote{In plain terms: at the best-possible attenuation $\gamma^\star$, the LMI is "just barely" tight and loses rank there, which is exactly the degenerate case flagged in Remark~\ref{rem:exactfail}. That's why minimizing $\gamma$ directly only gives a subgradient, while fixing $\gamma$ slightly above optimal (next paragraph) keeps the problem non-degenerate and restores an exact gradient. Might help to say this trade-off explicitly in the main text, since it's the reason the paper introduces the fixed-$\gamma$ SDP at all.}
 
 \emph{Fixed-$\gamma$ SDP: exact gradients.} Fix the attenuation $\gamma$
 strictly above the optimal level (the problem \eqref{eq:Hinf_cont}) can be solved for $\gamma^\star$, then $\gamma$ is picked larger with some gap). Rather than minimizing $\mu$, one then
@@ -814,6 +850,7 @@ so
 \frac{\partial \mathcal A_\theta}{\partial \theta_i}\mathcal X_k^\star +
 \frac{\partial \mathcal B_\theta}{\partial \theta_i} u_k^\star \Big).
 \end{equation}
+\suggestnote{Double-check the time index on $\lambda_k$ here against how the costate is actually defined in your Lagrangian: with the dynamics equality $\mathcal X_{k+1}=\mathcal A_\theta \mathcal X_k + \mathcal B_\theta u_k$ written as a constraint at "time $k$", the standard adjoint convention often attaches the multiplier as $\lambda_{k+1}$ (the multiplier introduced when eliminating $\mathcal X_{k+1}$), not $\lambda_k$. Not necessarily wrong -- conventions differ -- but worth a one-line definition of $\lambda_k$ right before this equation so readers can check the indexing themselves.}
 
 \begin{rem}
     If the state evolution and the measurement operator $f_\theta$ and $h_\theta$ represent a linear system, then $\mathcal{A}_\theta = \operatorname{blkdiag}\,(A_\theta, \bar A _\theta)$ (the evolution of the error covariance is independent of the state estimate) and $\mathcal{B}_\theta = [B_\theta^\top \, 0]^\top$ (the error covariance is independent of the input). This is a consequence of the separation principle between estimation and control for fixed $\theta$.
@@ -908,16 +945,19 @@ large $r_x$ similarly requires model reduction, structure exploitation, and Kryl
 %=======================================================================
 \section{Simulation studies}\label{sec:numerical}
 %=======================================================================
+\suggestnote{This entire section (and the whole paper) reports results only in tables -- there isn't a single figure. For a numerics-heavy section like this, at least one plot would likely help a lot: e.g.\ (a) a bar or line plot of the $J_{\mathrm{est}}/J_{\mathrm{cont}}/J_{\mathrm{tot}}$ reductions across the four studies (Table~\ref{tab:formulations} as a figure), (b) closed-loop state/estimation-error trajectories before vs.\ after co-design for one study, or (c) the MTDC sensor-count frontier of Table~\ref{tab:mtdc-frontier} as an actual frontier plot, which would make the "buy back sensors" headline land much faster than reading the table. Not a correctness issue, just a strong presentation suggestion given how central these results are to the paper's contribution.}
 
 We evaluate ContEst on four co-design problems spanning very different physics. These studies are then followed by a complexity analysis of the two inner problems
-under interior-point solvers (Section~\ref{sec:sim:complexity}). All these examples were solved by the Clarabel
+under interior-point solvers (Section~\ref{sec:sim:complexity}).
+\errornote{Section ordering mismatch: this sentence says the case studies are "followed by" the complexity analysis, but Section~\ref{sec:sim:complexity} is physically placed \emph{before} this Simulation Studies section (Sec.~\ref{sec:sim:complexity} is Sec.~6, this is Sec.~7). Same issue recurs later, e.g.\ the MTDC study says "exercising the structure-exploitation strategy flagged only in the abstract in Section~\ref{sec:sim:complexity}" as if that section comes later. Either swap the order of the two sections so complexity follows the case studies (matches the prose), or reword these references to say "preceded by" / "discussed above in Section~6".} All these examples were solved by the Clarabel
 interior-point solver. The outer loop is the projected quasi-Newton method of
 Remark~\ref{rem:algorithm} (BFGS) over the box $\Theta$, run from $5$ initial
 points (the baseline design $\theta_{\mathrm{nom}}$ plus four uniform random
 restarts in $\Theta$) keeping the best minimizer. The envelope-theorem gradients are exact, so we do not verify them
 per study, but as a one-time sanity check we confirmed that
 the analytic gradient matches central finite differences to a relative error below
-$10^{-4}$.\footnote{ContEst obtains the exact design gradient at essentially the cost of a
+$10^{-4}$.
+\suggestnote{This blanket claim ("we do not verify them per study") sits awkwardly next to several places later where you \emph{do} report per-study gradient checks: the PLL trigger-1 stationary point (verified to $10^{-5}$), the MTDC block-diagonal control dual (verified to $0.55\%$), and the MTDC banded restriction that you flag as failing the check (over $100\%$ disagreement, "including the sign"). Consider softening this sentence to something like "...so we do not re-verify them in every study by default, except where flagged below" so it doesn't read as contradicting the later per-study checks.}\footnote{ContEst obtains the exact design gradient at essentially the cost of a
 single inner solve, while forward (central) differences need $r_\theta+1$ ($2r_\theta$)
 inner solves for an $r_\theta$-vector $\theta$, for an approximate gradient.}
 
@@ -930,8 +970,8 @@ design improves the true cost, not merely the surrogate problem. Starting from i
 with sampled process/measurement noise,
 \begin{equation}\label{eq:costsplit}
 \begin{aligned}
-J^{MT}_{\mathrm{sc}} &= \frac{1}{M}\sum_{m=1}^M\sum_{k}^T\!\big(\|x_k\|_Q^2+\|u_k\|_R^2\big),\\
-J^{MT}_{\mathrm{est}} &= \frac{1}{M}\sum_{m=1}^M\sum_{k}^T\|x_k-\hat x_{k\mid k}\|_Q^2,
+J_{\mathrm{sc}} &= \frac{1}{M}\sum_{m=1}^M\sum_{k}^T\!\big(\|x_k\|_Q^2+\|u_k\|_R^2\big),\\
+J_{\mathrm{est}} &= \frac{1}{M}\sum_{m=1}^M\sum_{k}^T\|x_k-\hat x_{k\mid k}\|_Q^2,
 \end{aligned}
 \end{equation}
 with $M$ the number of Monte-Carlo sample trajectories and $T$ each trajectory's
@@ -971,7 +1011,7 @@ h_\theta &= \big[\phi,\theta_a,\psi, \omega_x,\omega_y,\omega_z\big]^\top,
 \end{align}
 \end{subequations}
 with $V_\theta=\operatorname{diag}(v_0/\alpha_{\mathrm{st}}^2\,I_3,\,v_0/\alpha_{\mathrm{gyro}}^2\,I_3), \, v_0=0.20$
-(better precision $\Rightarrow$ lower variance), with
+(better precision $\Rightarrow$ lower variance), disturbance $w_k\sim\mathcal N(0,W)$ with
 $W=\operatorname{diag}(10^{-6}I_3,10^{-4}I_3)$, and cost weights
 $Q=\operatorname{diag}(4I_3,I_3)$ (attitude weighted four times more heavily than
 rate, so the star tracker is intrinsically more valuable than the gyro) and
@@ -1054,7 +1094,7 @@ mole-fraction deviations about the nominal profile, in deviation form so
 $f_\theta(0,0)=0$ for every $\theta$. The nonlinearity enters the dynamics twice: the vapour-liquid equilibrium
 $y(x)=\alpha x/(1+(\alpha-1)x)$ ($\alpha=2.5$) and the bubble-point temperature
 $T(x)=T_{B0}-\Delta T_B\,y(x)$. The single input is the reboiler boil-up
-deviation $u=\Delta \bar V$ ($r_u=1$), limited to $|\Delta \bar V|\le1.5$; the measurements
+deviation $u=\Delta V$ ($r_u=1$), limited to $|\Delta V|\le1.5$; the measurements
 ($r_y=3$) are three Gaussian-weighted stage temperatures read at the sensor
 locations. Integration is at $\SI{0.05}{s}$; the receding-horizon MPC plans over
 $N=12$ steps. The design carries
@@ -1070,9 +1110,9 @@ deviations $\Delta y_i=y(x_i^{\mathrm{ss}}+\Delta x_i)-y_i^{\mathrm{ss}}$, for
 $i=1,\dots,12$ and $j=1,\dots,3$,
 \begin{subequations}\label{eq:distill-model}
 \begin{align}
-\Delta x_i^{+} &= \Delta x_i + \tfrac{\Delta t}{\bar M}\big(\mathrm{liq}_i+\mathrm{vap}_i\big),\\
+\Delta x_i^{+} &= \Delta x_i + \tfrac{\Delta t}{M}\big(\mathrm{liq}_i+\mathrm{vap}_i\big),\\
 \mathrm{liq}_i &= L_i(\theta_f)\,(\Delta x_{i+1}-\Delta x_i),\\
-\mathrm{vap}_i &= (\bar V+u)\,(\Delta y_{i-1}-\Delta y_i) + u\,(y_{i-1}^{\mathrm{ss}}-y_i^{\mathrm{ss}}),\\
+\mathrm{vap}_i &= (V+u)\,(\Delta y_{i-1}-\Delta y_i) + u\,(y_{i-1}^{\mathrm{ss}}-y_i^{\mathrm{ss}}),\\
 h_{\theta,j} &= \textstyle\sum_{i=1}^{12}\hat q_i(s_j)\,\big(T(x_i^{\mathrm{ss}}+\Delta x_i)-T_i^{\mathrm{ss}}\big),
 \end{align}
 \end{subequations}
@@ -1083,7 +1123,7 @@ $q_l(\theta_f)\propto \sum_{j=1}^{3}e^{-(l-f_j)^2/2\sigma_f^2}$ (normalized)
 setting the internal liquid traffic
 $L_i(\theta_f)=L_{\mathrm{ref}}+F\sum_{l>i}q_l$, and sensor weights
 $\hat q_i(s_j)\propto e^{-(i-s_j)^2/2\sigma_{\mathrm{sens}}^2}$. Constants $\alpha=2.5$,
-$L_{\mathrm{ref}}=2$, $\bar V=2.5$, $F=2.5$, $\bar M=1$,
+$L_{\mathrm{ref}}=2$, $V=2.5$, $F=2.5$, $M=1$,
 $\sigma_f=\sigma_{\mathrm{sens}}=1.2$, $T_{B0}=\SI{380}{K}$,
 $\Delta T_B=\SI{40}{K}$. The noise covariances $W=2\!\times\!10^{-5}I_{12}$,
 $V=0.6\,I_3$ ($\si{K^2}$), and prior $\Sigma_0=10^{-2}I_{12}$. The cost weights
@@ -1095,9 +1135,11 @@ $\lambda_{\mathrm{des}}\lVert\theta-\theta_{\mathrm{nom}}\rVert^2$.
 The design landscape is multimodal: the five-start BFGS converge to three distinct
 minima, and the baseline start alone converges to an inferior one, so the random
 restarts are what recover the reported optimum. ContEst spreads the feed
-streams: two settle lower toward the reboiler while
-the third climbs high up the column, and raises the three
-temperature sensors out of the bottom region across the mid-and-upper trays, covering the composition profile rather than clustering low (Table~\ref{tab:distill}). Improvements on the control, estimation and design costs are shown in Table~\ref{tab:formulations}.
+streams: two settle lower toward the reboiler ($f_{1,2}:3.0,4.5\to2.5,3.6$) while
+the third climbs high up the column ($f_3:6.0\to9.0$), and raises the three
+temperature sensors out of the bottom region across the mid-and-upper trays
+($s:(2.0,3.5,5.0)\to(3.0,5.4,8.0)$), covering the composition profile rather than
+clustering low (Table~\ref{tab:distill}). Improvements on the control, estimation and design costs are shown in Table~\ref{tab:formulations}.
 
 \begin{table}[t]
 \centering
@@ -1120,7 +1162,7 @@ $s_3$ & $h$ (temp.\ sensor) & 5.000 & 8.010 \\
 \end{table}
 
 %-----------------------------------------------------------------------
-\subsection{PLL/DSE tuning in a low-inertia grid}
+\subsection{Estimator co-design: PLL/DSE tuning in a low-inertia grid}
 \label{sec:sim:pll}
 %-----------------------------------------------------------------------
 
@@ -1143,7 +1185,8 @@ by a phasor measurement unit (PMU) angle channel and its PLL frequency channel
 ($r_y=6$). The genuine
 nonlinearity is the synchronizing power $\propto\sin(\delta^{\mathrm{eq}}_{ij}+
 \Delta\delta_i-\Delta\delta_j)$, in deviation form so $f_\theta(0,0)=0$ for
-all $\theta$; integration is at $\SI{0.05}{s}$, the MPC plans over $N=12$ steps ahead. The design parameters
+all $\theta$; integration is at $\SI{0.05}{s}$, the MPC plans over $N=12$ steps and
+the closed-loop cost is Monte-Carlo sampled over $T=30$ steps (Eq.~\eqref{eq:costsplit}, $M=100$). The design parameters
 are the per-bus inverter damping effectiveness
 $\theta_f=(e_1,e_2,e_3)\in[0.3,3]^3$ and the per-bus PLL bandwidths
 $\theta_h=(b_1,b_2,b_3)\in[2,20]\,\si{rad/s}$. 
@@ -1153,14 +1196,14 @@ Since the PLL bandwidths and damping gains are software values, and the useful a
 fixes which bus is fastest and least certain), the low per-solve cost of
 ContEst makes it natural to be used as an event-triggered adaptation layer that automatically tunes system parameters after sudden changes in the environment, such as the following scenario.
 
-First, under normal,
+We exercise this adaptive layer over two triggers. First, under normal,
 undisturbed operation (equilibrium, no post-fault kick, and a uniform
 quiet-level prior $\Sigma_0$ at every bus), ContEst is run once from the naive
 default $\theta_{\mathrm{nom}}$ ($e_i=1$, uniform $b_i=6$), producing a
-peacetime design $\theta_{\mathrm{peace}}$. Then a sudden event
+\emph{peacetime} design $\theta_{\mathrm{peace}}$. Then a sudden event
 concentrates a disturbance at bus~1 (large post-fault kick and an elevated
 prior $\Sigma_0$ there), while buses~2,3 stay `quiet'; this second trigger
-re-solves the same co-design problem, now started from
+re-solves the \emph{same} co-design problem, now started from
 $\theta_{\mathrm{peace}}$ rather than from $\theta_{\mathrm{nom}}$, producing
 the post-fault design $\theta^\star$. The automatic design/tuning
 must trade tracking speed against readout noise per bus in both triggers.
@@ -1196,29 +1239,56 @@ $\lambda_e=0.5$, $\lambda_b=0.02$, $b_{\mathrm{nom}}=6$. The design coupling is
 that the PLL bandwidth $b_i$ enters \emph{both} $f_\theta$ (the tracking line above)
 and the measurement covariance, which is design-dependent,
 \begin{equation}\label{eq:pll-V}
-V_\theta=\operatorname{blkdiag}\!\big(\sigma_\delta^2 I_3,\
+V(\theta)=\operatorname{blkdiag}\!\big(\sigma_\delta^2 I_3,\
 \operatorname{diag}_i\,\sigma_\omega^2(1+\kappa\,b_i)\big),
 \end{equation}
 $\sigma_\delta^2=4\!\times\!10^{-3}$, $\sigma_\omega^2=2\!\times\!10^{-3}$,
 $\kappa=0.30$: a wider-band PLL tracks faster but yields a noisier frequency
 readout---the bias--variance knob $\theta_h$ resolves.
 
-Under normal operation all five starts converge
+\emph{Trigger 1 (peacetime).} Under normal operation all five starts converge
 to the same minimizer $\theta_{\mathrm{peace}}$. With little disturbance for
 the actuator to counteract, the inverter damping is left exactly at its
-baseline ($e_i=1$), while every PLL
+baseline ($e_i=1$)---a genuine interior stationary point of the design cost,
+confirmed by both the analytic and central-finite-difference gradients
+vanishing there to within $10^{-5}$, not an optimizer stall---while every PLL
 bandwidth is raised uniformly to trim ambient estimation error
 ($b_i\!:\,6\to10.6$). This cuts $J_{\mathrm{est}}$ by $12.1\%$
 ($38.0\to33.4$) and $J_{\mathrm{cont}}$ by only $4.2\%$ ($83.6\to80.1$), for a
-$5.6\%$ reduction in the total $J_{\mathrm{des}}$ ($121.5\to114.7$).
+$5.6\%$ reduction in the total $J_{\mathrm{tot}}$ ($121.5\to114.7$)---a modest,
+almost purely estimation-side gain, exactly what a fault-free adaptation layer
+should find: little reason yet to invest in actuation.
 
-\emph{Trigger (post-fault).} The bus-1 fault re-triggers ContEst. All five starts, including one seeded at $\theta_{\mathrm{peace}}$ itself, converged to the same $\theta^\star$. ContEst reallocates sharply: it
+\emph{Trigger 2 (post-fault).} The bus-1 fault re-triggers ContEst, now
+started from $\theta_{\mathrm{peace}}$ rather than from $\theta_{\mathrm{nom}}$
+(all five starts, including one seeded at $\theta_{\mathrm{peace}}$ itself,
+again converge to the same $\theta^\star$). ContEst reallocates sharply: it
 raises the disturbed bus's PLL bandwidth further ($b_1\!:\,10.6\to13.7$) while
 leaving the quiet buses' bandwidths essentially where trigger 1 left them
-($b_{2,3}\!:\,10.6\to10.6$), and (now that there is a real disturbance to
-counteract) unlocks the inverter damping authority for the first time
+($b_{2,3}\!:\,10.6\to10.6$), and---now that there is a real disturbance to
+counteract---unlocks the inverter damping authority for the first time
 ($e_1\!:\,1\to3.0$, $e_{2,3}\!:\,1\to1.95,2.19$; none of the bandwidths reach
-the upper bound of $20$. Results are summarized in Table~\ref{tab:formulations}.
+the upper bound of $20$, because beyond the optimum the added readout noise in
+$V(\theta)$ outweighs faster tracking; Table~\ref{tab:pll}). Measured against
+$\theta_{\mathrm{peace}}$---the design actually in effect when the fault
+hits, not the original naive $\theta_{\mathrm{nom}}$---this second trigger
+cuts $J_{\mathrm{est}}$ by a further $3.0\%$ ($39.6\to38.4$) and
+$J_{\mathrm{cont}}$ by $38.6\%$ ($223.2\to137.1$), for a further $31.6\%$
+reduction in the total $J_{\mathrm{tot}}$ ($264.0\to180.7$). Measured instead
+against the original naive baseline $\theta_{\mathrm{nom}}$---i.e.\ the
+reduction if trigger 1 had never run---the combined effect of both triggers is
+the $J_{\mathrm{est}}$ $-17.6\%$, $J_{\mathrm{cont}}$ $-39.5\%$,
+$J_{\mathrm{tot}}$ $-33.9\%$ ($273.5\to180.7$) reported in
+Table~\ref{tab:formulations}. Replacing the information-state MPC by
+a certainty-equivalence controller (planning on the eKF mean as if it were exact)
+yields an essentially identical realized cost ($J_{\mathrm{tot}}:273.3\to180.6$),
+so on this near-separable study the improvement comes from the co-designed
+parameters $\theta$ rather than from the covariance-aware controller structure.
+
+Note that the optimal bandwidths sit strictly inside the box, which is
+the signature of the bias-variance trade-off the framework now resolves
+automatically, allocating the most estimator bandwidth exactly where the dynamics
+are fastest and least certain.
 
 
 \begin{table}[t]
@@ -1245,25 +1315,27 @@ $b_3$ & $h,V$ (PLL bandwidth)  & 6.000 & 10.575 & 10.575 \\
 \end{table}
 
 %-----------------------------------------------------------------------
-\subsection{Multi-terminal HVDC: sparse sensing}
+\subsection{Multi-terminal HVDC: droop and sparse voltage-sensor co-design}
 \label{sec:sim:mtdc}
 %-----------------------------------------------------------------------
 
-Multi-terminal HVDC (MTDC) grids regulate DC-bus voltage with droop
+Multi-terminal HVDC (MTDC) grids regulate DC-bus voltage with \emph{droop}
 control: each converter reacts to its own local voltage deviation by
 modulating its power injection, a fixed-structure, decentralized, proportional
-law (the DC-grid analogue of frequency droop) rather than a freshly
+law---the DC-grid analogue of frequency droop---rather than a freshly
 synthesized feedback gain. Droop needs no communication, but an aggressive
 droop setting on a meshed grid can excite a lightly-damped
-inter-terminal resonance, a worst-case (not average-case) failure mode
+\emph{inter-terminal resonance}, a worst-case (not average-case) failure mode
 that $H_\infty$ prices directly. On the sensing side, not every terminal needs
 a telemetered voltage sensor: the ring couples neighbouring buses, so an
 unsensed terminal's converter current can be reconstructed from its
 neighbours' voltages, trading estimation quality against a hard per-sensor
 telemetry cost. This is the same $H_2$/$H_\infty$ SDP machinery of
-Sections~\ref{sec:lqg} and \ref{sec:hinf}, at network scale ($r_x=30$) and under
-an explicit sparsity pattern that reflects the physical topology, exercising
-the structure-exploitation strategy we mentioned previously.
+Sections~\ref{sec:lqg}--\ref{sec:hinf}, at network scale ($r_x=30$) and under
+an explicit sparsity pattern that reflects the physical topology---exercising
+the structure-exploitation strategy flagged only in the abstract in
+Section~\ref{sec:sim:complexity}. This study stays entirely on the SDP path:
+no Riccati equation is solved or invoked anywhere below.
 
 A ring of $N_T=15$ terminals has state $x=[\Delta V_i,\Delta I_i]_{i=1}^{N_T}$
 ($r_x=30$, bus-voltage and converter-current deviations), input $u$ the
@@ -1278,7 +1350,7 @@ $(i^-,i^+)$,
 h_{\theta,i} &= \alpha_i\,\Delta V_i,
 \end{align}
 \end{subequations}
-where $\theta_i=k_i$ is the droop gain at terminal $i$ (entering the
+where $\theta_i=k_i$ is the droop gain at terminal $i$ (entering $A$, the
 $f_\theta$ axis) and $\alpha_i\in[0,1]$ is a per-terminal sensor gain
 (entering $C$, the $h_\theta$ axis; $\alpha_i=0$ removes the sensor). Line
 conductance $G_{\mathrm{dc}}=5$, droop leverage $k_0=12$, and heterogeneous
@@ -1288,26 +1360,34 @@ fixed physical constants. Cost weights penalize voltage deviation far above
 current ($Q=\operatorname{diag}(60,0.2,\dots)$, alternating per terminal),
 $R=2I_{15}$, and a small per-sensor measurement variance $v=10^{-3}$.
 
-\emph{Control: block-diagonal $H_\infty$.} $\theta$ enters $A_\theta$, so its
+\emph{Control: block-diagonal $H_\infty$.} $\theta$ enters $A$, so its
 worst-case cost is priced by the fixed-$\gamma$ BRL SDP~\eqref{eq:Hinf_fixed}
 at $\gamma^2=20$. A dense $(Y,L)$ solve is the $O(r_x^6)$ wall of
 Section~\ref{sec:sim:complexity} in practice (1380 variables,
-$\approx\!226\,$s); restricting $Y,L$ to a block-diagonal
-($2\times2$ per terminal) pattern cuts this to $\approx\!0.4\,$s, a $+54.9\%$ conservatism cost in the reported
-worst-case value but a clean, strictly complementary dual.
+$\approx\!226\,$s); restricting $Y,L$ to a \emph{block-diagonal}
+($2\times2$ per terminal, fully decentralized) pattern cuts this to 540
+variables and $\approx\!0.4\,$s, a $+54.9\%$ conservatism cost in the reported
+worst-case value but a clean, strictly complementary dual. A tighter
+\emph{banded} restriction (each terminal's LMI block also coupling to its ring
+neighbours, the pattern that would literally mirror the physical topology) is
+numerically \emph{dual-degenerate} here---its envelope gradient disagrees with
+a central finite difference by over $100\%$, including the sign, so it cannot
+drive a gradient-based search---so the block-diagonal restriction is used for
+control throughout, its dual verified against central differences on all 30
+design parameters to $0.55\%$ relative error.
 
 \emph{Sensing: banded $H_2$ with an $\ell_1$ sparsity penalty.} The estimation
-SDP~\eqref{eq:Jest} is restricted to the banded
-(ring-neighbour) pattern that does mirror the physical topology (instead of the block-diagonal case as in the control case above), it matches
+SDP~\eqref{eq:Jest} has no such degeneracy: restricted to the \emph{banded}
+(ring-neighbour) pattern that does mirror the physical topology, it matches
 the full dense SDP's true cost $\operatorname{tr}(Q\Sigma^\varepsilon)$ to
 within $+0.06\%$ at a fraction of the variables, and its dual gives the exact
-gradient in both $\theta$ (through $A_\theta$) and the sensor gains $\alpha$ (through
+gradient in both $\theta$ (through $A$) and the sensor gains $\alpha$ (through
 $C$). An $\ell_1$ penalty $\lambda_s\lVert\alpha\rVert_1$ ($\lambda_s=0.05$)
 in the design cost promotes sparse sensor placement, in the smooth epigraph
 form of Section~\ref{sec:sim:adcs}'s reasoning (here $\alpha\ge0$ already, so
 the penalty is simply linear).
 
-Because $\theta$ enters both inner values through $A_\theta$, the two axes are
+Because $\theta$ enters both inner values through $A$, the two axes are
 dynamically coupled; because $\alpha$ enters only $C$, the joint search
 alternates a $\theta$-step (fixed $\alpha$, both SDPs) and an $\alpha$-step
 (fixed $\theta$, estimation SDP only), each well-conditioned, rather than one
@@ -1321,9 +1401,10 @@ retains 12 of 15 sensors (dropping terminals 2, 6, 8) and spreads droop over
 $\theta^\star\in[0.89,1.67]$, well below the uniform baseline. This cuts the
 estimation cost $J_{\mathrm{est}}$ by $31.8\%$ ($0.650\to0.443$) and the
 control cost $J_{\mathrm{cont}}$ by $33.4\%$ ($2.476\to1.650$), for a $33.0\%$
-reduction in $J_{sc}=J_{\mathrm{cont}}+J_{\mathrm{est}}$ ($3.126\to2.093$) and,
+reduction in $J_c=J_{\mathrm{cont}}+J_{\mathrm{est}}$ ($3.126\to2.093$) and,
+\errornote{Numbers don't match Table~\ref{tab:mtdc-frontier} below: this "best" design uses 12 of 15 sensors, but that table only has rows for 15/9/6/4/3 sensors, and none of its co-designed-column values equal $J_{\mathrm{est}}=0.443$ or $J_{\mathrm{cont}}=1.650$ (closest are the 9-sensor row: $0.460$/$1.645$, and the 15-sensor row: $0.392$/$1.596$). Please double check: either the 12-sensor point needs its own row in Table~\ref{tab:mtdc-frontier}, or clarify in the text that the frontier table sweeps a different (fixed-count) experiment than the freely-optimized 12-sensor result reported here, so readers don't try to cross-reference the two and get confused.}
 after the droop-stress and sensor-sparsity price, a $21.6\%$ reduction in the
-total $J_{\mathrm{des}}$ ($3.351\to2.626$). As in the other studies, these are
+total $J_{\mathrm{tot}}$ ($3.351\to2.626$). As in the other studies, these are
 the exact steady-state SDP/Lyapunov values, not Monte-Carlo estimates: unlike
 ADCS's single linearization or the eKF-MPC studies' receding-horizon surrogate,
 this plant is linear by construction with no unmodeled dynamics, so there is
@@ -1351,29 +1432,64 @@ count (same sensor sets both ways, so the gap isolates the co-design gain).}
 \end{table}
 
 Table~\ref{tab:mtdc-frontier} is the headline result: co-designing the droop
-and sensor budget beats naive pruning at every count. The co-designed droop with only \textbf{4}
-sensors ($J_{\mathrm{est}}=0.653$) already matches the fixed-droop baseline's
-\textbf{15}-sensor value ($J_{\mathrm{est}}=0.650$), i.e.\ $73\%$ of the
+for a \emph{fixed} sensor budget beats naive pruning at every count, and by
+enough to buy back sensors outright---the co-designed droop with only \textbf{6}
+sensors ($J_{\mathrm{est}}=0.560$) already matches the fixed-droop baseline's
+\textbf{15}-sensor value ($J_{\mathrm{est}}=0.650$), i.e.\ $60\%$ of the
 voltage telemetry is removed with no loss in estimation quality, purely by
 retuning the actuation-side droop. A sensor-selection method with no actuation
 axis \cite{joshi2009sensor,tzoumas2016sensor} cannot pose this trade: droop
-reshapes the dynamics the estimator has to track, so a better-tuned
-droop makes the remaining sensors' information go further.
+reshapes the \emph{dynamics} the estimator has to track, so a better-tuned
+droop makes the remaining sensors' information go further, exactly the
+interior, cross-axis trade that motivates ContEst.
+
+%-----------------------------------------------------------------------
+\subsection{Summary of improvements}
+\label{sec:sim:summary}
+%-----------------------------------------------------------------------
 
 Table~\ref{tab:formulations} consolidates the four studies (dimensions, the design
 split $\theta=(\theta_f,\theta_h)$, the inner value, and
 the reductions); the absolute baseline$\to$optimum costs are reported compactly with
-each study above.
+each study above. In three of the four studies---ADCS and the two eKF-MPC
+studies---the reported
+numbers are Monte-Carlo averages of the realised cost ($M=100$ samples, $T=30$-step
+rollouts), never the steady-state SDP/gramian values used only to drive the design
+search; the fourth (MTDC) reports the exact steady-state SDP/Lyapunov values instead,
+since its plant is linear by construction with no surrogate-vs-truth gap to check
+(Section~\ref{sec:sim:mtdc}). The spacecraft ADCS study is the linear case, solved on
+the steady-state SDP path ($H_2$ control under a hard control-effort-covariance cap
+$+$ worst-case $H_\infty$ robust estimation): its sensing precisions and wheel
+authority compete for a shared power/mass budget, and the co-design drives most of
+the reduction through robust sensing while control also falls, because the
+realised control cost is measured on the true state and so partly inherits the
+estimation-error reduction ($J_{\mathrm{est}}$ $-42.7\%$, $J_{\mathrm{cont}}$
+$-18.3\%$) for a $34.0\%$ reduction in the total. The two
+nonlinear studies (distillation, PLL/DSE) use the eKF-MPC second stage; the PLL/DSE
+study additionally demonstrates ContEst as an event-triggered adaptation layer, run
+once under normal operation and re-triggered by the fault (Section~\ref{sec:sim:pll}).
+The MTDC study
+returns to the linear SDP path at network scale, restricting both inner values to a
+sparsity pattern reflecting the ring topology; its headline is cross-axis rather than
+purely a cost reduction---co-designing the droop lets $60\%$ of the voltage sensors be
+removed at no loss in estimation quality (Table~\ref{tab:mtdc-frontier})---alongside a
+$21.6\%$ reduction in the total design cost. Across all
+four studies the total cost falls by $9$--$34\%$, with $J_{\mathrm{est}}$ reduced in
+every case, and each optimum is an interior trade rather than a parameter pinned at a
+bound.
+Every study compares against the default baseline $\theta_{\mathrm{nom}}$ of its
+section. For the eKF-MPC studies the baseline and the co-design run the \emph{same}
+information-state MPC controller and differ only in the design $\theta$, so the
+reported reduction isolates the co-design (design-parameter) gain rather than any
+controller upgrade.
 
-\begin{rem}
 A caveat on interpretation: the baseline parameter values $\theta_{\mathrm{nom}}$
 above were chosen to be plausible rather than carefully hand-tuned, so the
 reported reductions should not be read as ContEst outperforming a state-of-the-art
 design. The contribution is not a competing tuning heuristic but the exact,
-dual-based design gradient that lets a first-order method search for the
-joint optimum.  
-\end{rem}
-
+dual-based design gradient that lets a first-order method \emph{search} for the
+joint optimum at all; the improvements simply confirm that this gradient points
+in a useful direction.
 
 
 \begin{table*}[t]
@@ -1383,12 +1499,12 @@ joint optimum.
 \begin{tabular}{lcclcccc}
 \hline
 study & $(r_x,r_u,r_y)$ & $\theta$: $n_f{+}n_h$ (enters) & inner value
-& $J_{\mathrm{est}}\!\downarrow$ & $J_{\mathrm{sc}}\!\downarrow$ & $J_{\mathrm{tot}}\!\downarrow$\\
+& $J_{\mathrm{est}}\!\downarrow$ & $J_{\mathrm{cont}}\!\downarrow$ & $J_{\mathrm{tot}}\!\downarrow$\\
 \hline
-ADCS & $(6,3,6)$   & $1{+}2$: $f_\theta$, $V_\theta$ & $H_2^{\mathrm{u\,capped}} + H_\infty$ & $42.7\%$ & $18.3\%$  & $\mathbf{34.0\%}$\\
+ADCS & $(6,3,6)$   & $1{+}2$: $f_\theta$, $V_\theta$ & $H_2^{\mathrm{cap}} + H_\infty$ & $42.7\%$ & $18.3\%$  & $\mathbf{34.0\%}$\\
 Distillation      & $(12,1,3)$  & $3{+}3$: $f_\theta$, $h_\theta$ & eKF-MPC & $35.3\%$ & $5.6\%$  & $\mathbf{9.5\%}$\\
 PLL/DSE    & $(9,3,6)$   & $3{+}3$: $f_\theta$, $(f_\theta,V_\theta)$ & eKF-MPC & $17.6\%$ & $39.5\%$ & $\mathbf{33.9\%}$\\
-MTDC & $(30,15,\le\!15)$ & $15{+}15$: $f_\theta$, $h_\theta$ & $H_\infty^{\mathrm{blockdiag}} + H_2^{\mathrm{banded}}$ & $31.8\%$ & $33.4\%$ & $\mathbf{21.6\%}$\\
+MTDC & $(30,15,\le\!15)$ & $15{+}15$: $f_\theta$, $h_\theta$ & $H_\infty^{\mathrm{bd}} + H_2^{\mathrm{band}}$ & $31.8\%$ & $33.4\%$ & $\mathbf{21.6\%}$\\
 \hline
 \end{tabular}
 \end{table*}
@@ -1407,9 +1523,12 @@ mixed-integer problem with a sparse $\ell_1$ relaxation whose duals price the
 essential sensors. In every case the design gradient is obtained exactly and cheaply
 from the inner dual variables, the LMI duals or dynamics costates, by the envelope
 theorem, sidestepping both implicit differentiation of the solution map and
-differentiation of the KKT system. Future work includes chance-constrained and scenario-based inner problems, Bayesian filters beyond the eKF, and decomposition of the outer problem
+differentiation of the KKT system.
+
+Future work includes chance-constrained and scenario-based inner problems, Bayesian filters beyond the eKF, and decomposition of the outer problem
 along multidisciplinary-design-optimization architectures for large interconnected
 systems.
+\suggestnote{The conclusion doesn't mention the approximation gaps you were careful to spell out in Remark~\ref{rem:ekfbreaks} (eKF vs.\ exact Bayesian filter, prediction-only mode dropping innovation feedback, linearization about the current-time information state) or the degeneracy caveat of Remark~\ref{rem:exactfail}/Corollary~\ref{cor:hinf}. A one- or two-sentence limitations paragraph before "Future work" would round out the conclusion and preempt a reviewer asking "so when does this NOT work exactly."}
 
 \begin{ack}
 The authors thank colleagues at Argonne National Laboratory for helpful
@@ -1466,6 +1585,15 @@ Therefore, the term $\E \| x_k \| _Q^2$ can be expressed by
     \E \| x_k \| _Q^2 &= \E \left \{ \E \left \{  \| x_{k}\|_Q^2 \mid \mathcal{Z}_k \right \} \right \}\\
     &=\E \left \{  \operatorname{tr}(Q \Sigma_{k \mid k}) +  \| x_{k \mid k}\|_Q^2 \right \},
 \end{align*}
+\explainnote{Spelling out the step that produces the second line above (the real content; the first line is just the tower property, Lemma~\ref{lem:smoothing}, applied to $\chi=\|x_k\|_Q^2$). The work is in the inner conditional expectation $\E\{x_k^\top Qx_k\mid\mathcal Z_k\}$. Write $x_k=x_{k\mid k}+\varepsilon_k$ with $x_{k\mid k}=\E\{x_k\mid\mathcal Z_k\}$ and $\varepsilon_k=x_k-x_{k\mid k}$, so $\E\{\varepsilon_k\mid\mathcal Z_k\}=0$ by construction (that's what "conditional mean" means). Expanding the quadratic form,
+\[
+x_k^\top Qx_k = x_{k\mid k}^\top Qx_{k\mid k} + 2\,x_{k\mid k}^\top Q\varepsilon_k + \varepsilon_k^\top Q\varepsilon_k,
+\]
+then take $\E\{\cdot\mid\mathcal Z_k\}$ term by term: $x_{k\mid k}$ is $\mathcal Z_k$-measurable, so the first term passes through unchanged; the cross term vanishes because $\E\{\varepsilon_k\mid\mathcal Z_k\}=0$; and for the last term, $\varepsilon_k^\top Q\varepsilon_k=\operatorname{tr}(Q\varepsilon_k\varepsilon_k^\top)$ (a scalar equals its own trace, then cyclic property), so
+\[
+\E\{\varepsilon_k^\top Q\varepsilon_k\mid\mathcal Z_k\}=\operatorname{tr}\big(Q\,\E\{\varepsilon_k\varepsilon_k^\top\mid\mathcal Z_k\}\big)=\operatorname{tr}(Q\Sigma_{k\mid k}),
+\]
+using the definition of $\Sigma_{k\mid k}$ in~\eqref{eq:filterMeanCov} (trace and conditional expectation commute since both are linear). Altogether $\E\{x_k^\top Qx_k\mid\mathcal Z_k\}=\|x_{k\mid k}\|_Q^2+\operatorname{tr}(Q\Sigma_{k\mid k})$, exactly the align* above. This is the same conditional bias--variance decomposition used throughout estimation theory (mean-square value = variance + squared mean), here with zero "bias" cross-term because $x_{k\mid k}$ is defined as the conditional mean itself.}
 where the first two conditional moments are
 \begin{equation}
 \begin{aligned}\label{eq:filterMeanCov}
@@ -1486,17 +1614,37 @@ or in the infinite-horizon case
 \end{align*}
 
 In this paper we have two regimes, linear and nonlinear. For the linear cases (Sections~\ref{sec:lqg} and \ref{sec:hinf}), we adopt the infinite horizon cost, with $u_k = \kappa(\mathcal{Z}_k) = K x_{k \mid k}$, that is, certainty equivalent state-feedback control (due to the separation principle: the state error covariance $\Sigma_{k \mid k}$ evolution is not dependent on $u_k$. After substituting the feedback control, and using the cyclic property of the trace again, the cost becomes that in \eqref{eq:linear stoch cost}, given that $\Sigma^\epsilon = \lim_{k \to \infty} \E \varepsilon_k \varepsilon_k^\top = \lim_{k \to \infty} \Sigma_{k \mid k}$, $\Sigma = \lim _{k \to \infty} \E x_{k \mid k} x_{k \mid k}^\top$, the estimation error covariance and the state covariance (about the origin), respectively.
+\explainnote{This is the promised "full derivation" of Eq.~\eqref{eq:linear stoch cost} referenced back in Section~4, but it's compressed into one clause ("using the cyclic property of the trace again") without being shown. Spelled out: start from the general infinite-horizon formula just above, $J_{\mathrm{sc}}=\lim_k\E[\|x_{k\mid k}\|_Q^2+\|u_k\|_R^2+\operatorname{tr}(Q\Sigma_{k\mid k})]$. Substitute $u_k=Kx_{k\mid k}$ and apply the trace identity $a^\top Ma=\operatorname{tr}(Maa^\top)$ to both quadratic forms,
+\[
+\|x_{k\mid k}\|_Q^2=\operatorname{tr}(Qx_{k\mid k}x_{k\mid k}^\top),
+\]
+\[
+\|Kx_{k\mid k}\|_R^2=\operatorname{tr}\big(RKx_{k\mid k}x_{k\mid k}^\top K^\top\big).
+\]
+Take $\E[\cdot]$ termwise; trace and expectation are both linear, and $K$ is deterministic so it factors out:
+\[
+\E\|x_{k\mid k}\|_Q^2=\operatorname{tr}\big(Q\,\E[x_{k\mid k}x_{k\mid k}^\top]\big),
+\]
+\[
+\E\|Kx_{k\mid k}\|_R^2=\operatorname{tr}\big(RK\,\E[x_{k\mid k}x_{k\mid k}^\top]\,K^\top\big).
+\]
+As $k\to\infty$, $\Sigma:=\lim_k\E[x_{k\mid k}x_{k\mid k}^\top]$ (zero-mean since $x_0,w_k,v_k$ all are) turns these into exactly $\operatorname{tr}(Q\Sigma)$ and $\operatorname{tr}(RK\Sigma K^\top)$. For the last term, $\Sigma_{k\mid k}$ is the Kalman-filter error covariance, which for an LTI model is deterministic (depends only on the model, not on realized $y_k$'s), so $\E[\operatorname{tr}(Q\Sigma_{k\mid k})]=\operatorname{tr}(Q\Sigma_{k\mid k})$ trivially and $\lim_k\Sigma_{k\mid k}=\Sigma^\varepsilon$ is just its steady-state value. Summing the three pieces gives $J_{\mathrm{sc}}=\operatorname{tr}(Q\Sigma)+\operatorname{tr}(RK\Sigma K^\top)+\operatorname{tr}(Q\Sigma^\varepsilon)=J_{\mathrm{cont}}+J_{\mathrm{est}}$, i.e.\ Eq.~\eqref{eq:linear stoch cost}. It checks out -- it's just easy to gloss over on a first read since none of these intermediate steps are actually shown.}
 
 For the nonlinear regime, we choose the eKF to track the evolution of the state first two moments. In addition to \eqref{eq:filterMeanCov}, let
 \begin{align*}
      x_{k \mid k-1} &= \E \left \{ x_k \mid Z_{k-1}, u_{k-1} \right \}, \\
     \Sigma_{k \mid k-1} &= \E \left \{ [x_k-x_{k \mid k-1}][x_k-x_{k \mid k-1}]^\top \mid Z_{k-1},u_{k-1} \right \}.
 \end{align*} 
-At each time step, the eKF is the recursion
+At each time step, the eKF is the standard recursion
+\add{\cite{anderson2012optimal,jazwinski2007stochastic}},
+\add{with $W=\Cov(w_k)\succeq0$ and $V=\Cov(v_k)\succ0$ the process and
+measurement noise covariances already introduced in
+Section~\ref{sec:formulation} (possibly $\theta$-dependent, as noted there),}
 \begin{align}
  x_{k+1 \mid k} = f_\theta( x_{k \mid k},u_k),\quad \label{eq:eKF_state}
-\Sigma_{k+1 \mid k} = F_k \Sigma_{k \mid k} F_k^\top + W, 
+\Sigma_{k+1 \mid k} = F_k \Sigma_{k \mid k} F_k^\top + W,
 \end{align}
+\errornote{$W$ and $V$ are never redefined locally -- they were introduced once, all the way back in Sec.~3 ("the disturbances $w_k,v_k$ are i.i.d. ... with covariances $W,V$"), and then not mentioned again until they resurface here in Eq.~\eqref{eq:eKF_state}/\eqref{eq:eKF_supportVariables}, roughly 1000+ lines and 6 sections later. Same pattern as the $Q$ gap flagged earlier at Eq.~(4): a symbol defined once far upstream and reused cold in the appendix. A one-clause reminder (added above) is an easy fix; worth checking the rest of the appendix for other symbols reused this way without a local reminder (e.g. $Q$ itself reappears in \eqref{eq:eKF_supportVariables}'s surrounding derivation too).}
 where
 \begin{equation}
 \begin{aligned} \label{eq:eKF_supportVariables}
@@ -1525,6 +1673,8 @@ where $\mathcal{F}_\theta$ is constructed by \eqref{eq:eKF_state} and \eqref{eq:
 \section{Proof of the LQG regularity Proposition}\label{app:lqgreg}
 %=======================================================================
 
+
+\explainnote{You will get in trouble with the assumption labels and the equation labels, you have two A2, A3 etc}
 This appendix proves Proposition~\ref{prop:lqgreg} by verifying
 Assumption~\ref{as:env}(A1)--(A4) for the control SDP~\eqref{eq:Jcont} and, in the
 course of (A3), deriving the dual identity $S_{11}^\star=P$. The estimation
@@ -1568,6 +1718,20 @@ $\theta$; $\theta$ enters only through $A_\theta,B_\theta$ (and, if co-designed,
 $W,Q,R$), each $C^1$ in $\theta$, so $\nabla_\theta V=\langle\lambda^\star,
 \partial_\theta(\text{data})\rangle$ once the multiplier $\lambda^\star$ is unique.
 
+\explainnote{Verification of Eq.~\eqref{eq:cos}, spelled out step by step since it's stated without proof: write $A_K=A_\theta+B_\theta K$ and let $\Sigma_K\succ0$ solve the closed-loop Lyapunov equation $\Sigma_K=A_K\Sigma_K A_K^\top+W$, so $W=\Sigma_K-A_K\Sigma_K A_K^\top$. Using $J(K)=\operatorname{tr}(Q\Sigma_K)+\operatorname{tr}(RK\Sigma_K K^\top)=\operatorname{tr}[(Q+K^\top RK)\Sigma_K]$ (cyclic trace) and substituting $W$ into $\operatorname{tr}(PW)$ gives $\operatorname{tr}(PW)=\operatorname{tr}(P\Sigma_K)-\operatorname{tr}(A_K^\top PA_K\,\Sigma_K)$, hence
+\[
+J(K)-\operatorname{tr}(PW)=\operatorname{tr}\Big[\big(Q+K^\top RK+A_K^\top PA_K-P\big)\,\Sigma_K\Big].
+\]
+Everything now reduces to the pure matrix identity that the bracket equals $(K-K^\star)^\top(R+B_\theta^\top PB_\theta)(K-K^\star)$, with no trace or $\Sigma_K$ involved. Substitute the control DARE $P=Q+K^{\star\top}RK^\star+A_{K^\star}^\top PA_{K^\star}$ for $P$ inside the bracket and expand $A_K^\top PA_K$ and $A_{K^\star}^\top PA_{K^\star}$ using $A_K=A_\theta+B_\theta K$. Every cross term containing $A_\theta^\top PB_\theta$ can then be eliminated using the stationarity relation that defines $K^\star$ in the first place, $B_\theta^\top PA_\theta=-(R+B_\theta^\top PB_\theta)K^\star$ (equivalently $K^\star=-(R+B_\theta^\top PB_\theta)^{-1}B_\theta^\top PA_\theta$). What remains, with $\Phi:=R+B_\theta^\top PB_\theta$, is exactly
+\[
+K^\top\Phi K-K^{\star\top}\Phi K-K^\top\Phi K^\star+K^{\star\top}\Phi K^\star
+\]
+\[
+\qquad=\;(K-K^\star)^\top\Phi(K-K^\star)
+\]
+by direct expansion, which is Eq.~\eqref{eq:cos}. So this is a standard LQR completion-of-squares identity (the same one behind the classical LQR "policy improvement" argument), not something novel or fragile to this paper -- it checks out.}
+
+\explainnote{Roadmap for this (dense) proof of (A3), since it's the longest argument in the paper: (1) show both LMI multipliers must be rank-deficient and supported exactly on the kernel of the active constraint (Eq.~\eqref{eq:rank1}); (2) that forces every feasible dual point into a low-dimensional "sandwich" form (Eq.~\eqref{eq:lift}) parametrized by just two small matrices $\Theta,\Xi$; (3) plug that form into the KKT stationarity conditions (Eq.~\eqref{eq:kkt}) and the $B_\theta$-terms cancel, leaving a single Stein/Lyapunov equation (Eq.~\eqref{eq:stein}) whose unique solution is exactly the familiar Riccati $P$. That's the whole argument -- worth a one-sentence version of this up front for readers who just want the punchline ($S_{11}^\star=P$) without following every algebraic step.}
 \emph{(A3) Unique dual, strict complementarity, and $S_{11}^\star=P$.} This is the
 one delicate assumption; we prove it by \emph{constructing} the dual and showing it
 is a single point. At the optimum both constraints are rank deficient. Using the
@@ -1689,6 +1853,7 @@ fails---at a feasibility boundary where $V\to+\infty$, or where Slater or bounde
 the dual set is lost---the bound \eqref{eq:lip} breaks and no finite subgradient need
 exist. \hfill$\square$
 
+\suggestnote{References.bib wasn't included in this review pass, so I couldn't verify the bibkeys resolve or check citation accuracy (author names, venues, years). The file header already flags this (keys from three separate sources: References.bib, ContEst\_related\_work.bib, and two suggested BibTeX entries at the end of this file) -- please do run bibtex end-to-end once more before submission and confirm no "undefined citation" warnings, especially for the two owned works (grigoriadis1998integrate, ramadan\_ekfkoopman) whose entries are marked "VERIFY" in the comments below.}
 \bibliographystyle{plain}
 \bibliography{References}
 

@@ -29,7 +29,7 @@
 include("../src/LQR.jl")     # dare, dlyap  (Riccati cross-checks)
 include("../src/Hinf.jl")    # hinf_filter_gare  (γ²_min bisection + GARE cross-check)
 include("../src/BFGS.jl")    # cached_objective, verify_gradient, multistart_design
-using JuMP, Clarabel, LinearAlgebra, ForwardDiff, Printf
+using JuMP, Clarabel, LinearAlgebra, ForwardDiff, Printf, Random
 
 # ── Spacecraft parameters (identical to example_adcs_hinf.jl) ──────────────────
 const Jx = 4.0; const Jy = 6.0; const Jz = 5.0
@@ -201,6 +201,65 @@ end
 
 kalman_cost(A, V) = tr(Qmat * dare(Matrix(A'), Matrix(Cmat'), Σ_w, Matrix(V)))
 
+# ── Fixed linear gains (K, L) from the steady-state SDPs, for MC rollout ───────
+# K = L_sdp·Σ⁻¹ (control gain, u = Kx̂) from the H₂+cap SDP; L (filter gain) from
+# the H∞ filter GARE, L = A₀ Σe Cᵀ(V + C Σe Cᵀ)⁻¹ (central H∞ filter form).
+function design_gains(θ, γ²_est, u_cap)
+    A0, B = model_lin(θ, [0.0, 0.0, 0.0]); V0 = Vmat(θ)
+    mdl = Model(Clarabel.Optimizer); set_silent(mdl)
+    @variable(mdl, Σ[1:n, 1:n], Symmetric); @variable(mdl, Z0[1:m, 1:m], Symmetric)
+    @variable(mdl, Lc[1:m, 1:n])
+    @constraint(mdl, Symmetric(Σ .- 1e-7 .* Matrix(I, n, n)) in PSDCone())
+    @constraint(mdl, Symmetric([Z0 Lc; permutedims(Lc) Σ]) in PSDCone())
+    @constraint(mdl, Symmetric([Σ .- Σ_w (A0*Σ .+ B*Lc); permutedims(A0*Σ .+ B*Lc) Σ]) in PSDCone())
+    @constraint(mdl, tr(Z0) <= u_cap)
+    @objective(mdl, Min, tr(Qmat * Σ) + tr(Rmat * Z0))
+    optimize!(mdl)
+    Σv = value.(Σ); K = value.(Lc) * inv(Σv)
+    Le = Matrix(sqrt(Symmetric(Qmat)))
+    Σe, _, _, ok = hinf_filter_gare(A0, Cmat, Σ_w, V0, Le, γ²_est)
+    L = A0 * Matrix(Σe) * Cmat' * inv(V0 .+ Cmat * Matrix(Σe) * Cmat')
+    return (; A0, B, V0, K, L)
+end
+
+# ── TRUE nonlinear plant (reinstates the gyroscopic coupling ω×(Jω), zeroed by
+#    the design's Jacobian at ω=0) ──────────────────────────────────────────────
+function f_true(x, u, θ)
+    e_rw = θ[1]
+    p = x[1:3]; ω = x[4:6]
+    p⁺ = p .+ dt_s .* ω
+    ω⁺ = ω .+ dt_s .* (Jinv * (e_rw .* u .- cross(ω, Jmat * ω)))
+    return vcat(p⁺, ω⁺)
+end
+
+# ── Monte-Carlo closed-loop evaluation of the realised cost under the FIXED
+#    linear gains (K, L), on the TRUE nonlinear plant. M=100 samples, T=30-step
+#    rollouts (matching example_distillation.jl/example_pll.jl); cumulative
+#    (summed-over-horizon) cost, averaged over samples, same convention as
+#    src/Simulate.jl's simulate_mc. IC x0=0: the small-signal/steady-state regime
+#    the SDPs' noise levels imply (disturbance-driven only, no set-point step).
+const M_mc = 100; const T_sim = 30
+function mc_cost_breakdown(θ, γ²_est, u_cap; seed = 20240624)
+    dg = design_gains(θ, γ²_est, u_cap)
+    Random.seed!(seed)
+    Lw = cholesky(Symmetric(Matrix(Σ_w)) + 1e-12I).L
+    Lv = cholesky(Symmetric(Matrix(dg.V0)) + 1e-12I).L
+    Jcont = 0.0; Jest = 0.0
+    for _ in 1:M_mc
+        x = zeros(n); xhat = zeros(n)
+        for _t in 1:T_sim
+            u = dg.K * xhat
+            Jcont += dot(x, Qmat * x) + dot(u, Rmat * u)
+            y = x .+ Lv * randn(n)
+            xhat = dg.A0 * xhat .+ dg.B * u .+ dg.L * (y .- xhat)
+            x = f_true(x, u, θ) .+ Lw * randn(n)
+            Jest += dot(x .- xhat, Qmat * (x .- xhat))
+        end
+    end
+    J_cont = Jcont / M_mc; J_est = Jest / M_mc
+    return (; J_est, J_cont, J_c = J_cont + J_est, J_des = J_des(θ), J_tot = J_cont + J_est + J_des(θ))
+end
+
 # ── Averaged inner value (control H₂+cap  +  estimation H∞) ────────────────────
 function inner_vg(θ; u_cap = Inf, γ²_est = 1.0)
     Jd = 0.0; Je = 0.0; g = zeros(length(θ))
@@ -276,29 +335,46 @@ function adcs_hinfest_report(; seed = 20240624, n_starts = 5, iterations = 100,
     for k in 2:length(Js); Js[k]-Js[k-1] > 1e-4 && (nd += 1); end
     @printf("  starts run: %d   distinct minima: %d   best J_tot = %.5f\n", n_starts, nd, best_J)
 
-    # ── Cost decomposition (baseline vs optimum, cap active) ──────────────────
+    # ── Cost decomposition, steady-state SDP/gramian values (diagnostic only) ──
     function bd(θ)
         jd, _, Js, Jef, eff, _ = ctrl_h2(θ, ω_ens[1]; u_cap = u_cap)
         je, _ = est_hinf_vg(θ, ω_ens[1], γ²_est)
         (; J_est = je, J_state = Js, J_eff = Jef, effort = eff,
            J_cont = jd, J_c = jd + je, J_des = J_des(θ), J_tot = jd + je + J_des(θ))
     end
-    base = bd(θ_nom); opt = bd(best_θ)
+    base_th = bd(θ_nom); opt_th = bd(best_θ)
     pct(b, o) = abs(b) < 1e-12 ? "    — " : @sprintf("%+6.2f%%", 100*(o-b)/b)
-    println("\n── Cost components: baseline θ_nom → optimal θ* ────────────")
+    println("\n── Cost components (steady-state SDP/gramian, DIAGNOSTIC ONLY) ─")
     @printf("  %-30s %12s %12s %10s\n", "component", "baseline", "optimal", "Δ%")
-    for (nm, b, o) in (("Estimation (H∞)   J_est", base.J_est,  opt.J_est),
-                       ("Control state     tr(QΣ)", base.J_state, opt.J_state),
-                       ("Control effort    tr(RZ₀)", base.J_eff, opt.J_eff),
-                       ("Control total     J_cont", base.J_cont, opt.J_cont),
+    for (nm, b, o) in (("Estimation (H∞)   J_est", base_th.J_est,  opt_th.J_est),
+                       ("Control state     tr(QΣ)", base_th.J_state, opt_th.J_state),
+                       ("Control effort    tr(RZ₀)", base_th.J_eff, opt_th.J_eff),
+                       ("Control total     J_cont", base_th.J_cont, opt_th.J_cont),
+                       ("Inner  J_c=J_cont+J_est",  base_th.J_c,    opt_th.J_c),
+                       ("Design cost       J_des",  base_th.J_des,  opt_th.J_des),
+                       ("TOTAL   J_tot",            base_th.J_tot,  opt_th.J_tot))
+        @printf("  %-30s %12.5f %12.5f  %s\n", nm, b, o, pct(b, o))
+    end
+    @printf("\n  effort tr(Z₀):  baseline %.4g  optimal %.4g   (cap = %.4g%s)\n",
+            base_th.effort, opt_th.effort, u_cap,
+            abs(opt_th.effort - u_cap) < 1e-3*u_cap ? ", ACTIVE" : "")
+
+    # ── Cost decomposition, REPORTED: Monte-Carlo realised cost on the TRUE ────
+    # nonlinear plant under the fixed linear gains (K, L) the SDPs produce.
+    # M=100 samples x T=30-step rollouts (example_distillation.jl/example_pll.jl
+    # convention), IC x0=0 (the small-signal/steady-state regime the noise levels
+    # imply). This is what the paper reports (Section~9): NOT the gramian values.
+    base = mc_cost_breakdown(θ_nom, γ²_est, u_cap; seed = seed)
+    opt  = mc_cost_breakdown(best_θ, γ²_est, u_cap; seed = seed)
+    println("\n── Cost components (Monte Carlo, M=$M_mc, T=$T_sim, TRUE nonlinear plant) — REPORTED ──")
+    @printf("  %-30s %12s %12s %10s\n", "component", "baseline", "optimal", "Δ%")
+    for (nm, b, o) in (("Estimation        J_est", base.J_est,  opt.J_est),
+                       ("Control (state+effort) J_cont", base.J_cont, opt.J_cont),
                        ("Inner  J_c=J_cont+J_est",  base.J_c,    opt.J_c),
                        ("Design cost       J_des",  base.J_des,  opt.J_des),
                        ("TOTAL   J_tot",            base.J_tot,  opt.J_tot))
         @printf("  %-30s %12.5f %12.5f  %s\n", nm, b, o, pct(b, o))
     end
-    @printf("\n  effort tr(Z₀):  baseline %.4g  optimal %.4g   (cap = %.4g%s)\n",
-            base.effort, opt.effort, u_cap,
-            abs(opt.effort - u_cap) < 1e-3*u_cap ? ", ACTIVE" : "")
     @printf("  Net total reduction: %.5f  (%.2f%%)\n",
             base.J_tot-opt.J_tot, 100*(base.J_tot-opt.J_tot)/base.J_tot)
 
